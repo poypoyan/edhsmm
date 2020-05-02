@@ -10,7 +10,7 @@ The algorithms are based on [Yu(2010)](https://www.sciencedirect.com/science/art
 The code style is based on [hmmlearn](https://github.com/hmmlearn/hmmlearn) and [jvkersch/hsmmlearn](https://github.com/jvkersch/hsmmlearn).
 
 #### 
-I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (Python 3) on Windows.
+I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (Python 3) on Windows (see the [notebooks](https://github.com/poypoyan/edhsmm/tree/master/notebooks)).
 
 #### Implemented so far
 - EM Algorithm (with & without right-censoring) 
