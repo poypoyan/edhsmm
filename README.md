@@ -1,5 +1,5 @@
 # edhmm
-An **incomplete** implementation of Explicit Duration Hidden Markov Model (EDHMM) in Python 3. Supports right-censoring, but no left-censoring.
+An **incomplete** implementation of Explicit Duration Hidden Semi-Markov Model (EDHSMM) in Python 3. Supports right-censoring, but no left-censoring.
 
 This exists because I attempted to "improve" a project, but because of the COVID-19 pandemic and time constraint, I decided to not apply this anymore. Anyways, I will still try to complete this in the future.
 
