@@ -17,4 +17,4 @@ The code style is based on [hmmlearn](https://github.com/hmmlearn/hmmlearn) and 
 - EM Algorithm with Multiple Observations
 - Cythoning the core algorithms
 - Generate samples
-- *and* a lot more (to be posted in *issues*)
+- *and a lot more* (to be posted in [issues](https://github.com/poypoyan/edhmm/issues))
