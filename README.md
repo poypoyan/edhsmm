@@ -3,9 +3,14 @@ An **incomplete** implementation of Explicit Duration Hidden Semi-Markov Model (
 
 This exists because I attempted to "improve" a project, but because of the COVID-19 pandemic and time constraint, I decided to not apply this anymore. Anyways, I will still try to complete this in the future.
 
+I have very little knowledge in software development, so this is where I need most help.
+
 The algorithms are based on [Yu(2010)](https://www.sciencedirect.com/science/article/pii/S0004370209001416).
 
 The code style is based on [hmmlearn](https://github.com/hmmlearn/hmmlearn) and [jvkersch/hsmmlearn](https://github.com/jvkersch/hsmmlearn).
+
+#### 
+I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (Python 3) on Windows.
 
 #### Implemented so far
 - EM Algorithm (with & without right-censoring) 
