@@ -106,7 +106,6 @@ def _smoothed(n_samples, n_states, n_durations,
               beta, betastar,
               right_censor,
               eta, xi, gamma):
-
     for t in range(n_samples - 1, -1, -1):
         for i in range(n_states):
             # eta computation
