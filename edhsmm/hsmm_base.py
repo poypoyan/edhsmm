@@ -7,7 +7,7 @@ from hsmm_utils import log_mask_zero
 
 # Base Class for Explicit Duration HSMM
 class HSMM:
-    def __init__(self, n_states=1, n_durations=5, n_iter=20, tol=1e-2):
+    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2):
         self.n_states = n_states
         self.n_durations = n_durations
         self.n_iter = n_iter
@@ -103,9 +103,21 @@ class HSMM:
             self.emission_mstep(X, gamma)   # new emissions
             print("FIT: reestimation complete for ", (itera + 1), "th loop.", sep="")
     # predict
-    def predict(self, X, lengths=None):
+    def predict(self, X, lengths=None, censoring=1):
         self.check()
-        pass
+        logframe = self.emission_logprob(X)
+        n_samples = logframe.shape[0]
+        # setup required probability tables
+        u = np.empty((n_samples, self.n_states, self.n_durations))
+        # core stuff
+        core._u_only(n_samples, self.n_states, self.n_durations,
+                     logframe, u)
+        core._viterbi(n_samples, self.n_states, self.n_durations,
+                      log_mask_zero(self.pi),
+                      log_mask_zero(self.tmat),
+                      log_mask_zero(self.dur),
+                      censoring, u)
+        return   # it should return state_seq, and logprob
 
 # Simple Gaussian Explicit Duration HSMM
 class GaussianHSMM(HSMM):
