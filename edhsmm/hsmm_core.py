@@ -1,8 +1,8 @@
 # HSMM (Explicit Duration HMM) Core Algorithms
 # This is inspired from "_hmmc.pyx" from hmmlearn package.
 # Hence, this is easily convertible to cython (with nogil).
-# For cython, argmax, max, logsumexp, and logaddexp should
-# be implemented like in "_hmmc.pyx".
+# For cython, auxiliary functions (e.g. argmax, logsumexp,
+# etc.) should be implemented like in "_hmmc.pyx".
 
 import numpy as np
 from scipy.special import logsumexp
@@ -38,11 +38,10 @@ def _forward(n_samples, n_states, n_durations,
                     else:
                         u[t, j, d] = u[t - 1, j, d - 1] + log_obsprob[t, j]
                     curr_u = u[t, j, d]
+                elif d < t - (n_samples - 1):   # out range(n_samples)
+                    curr_u = 0.0
                 else:   # out range(n_samples)
-                    if d < t - (n_samples - 1):
-                        curr_u = 0.0
-                    else:
-                        curr_u = u[n_samples - 1, j, (n_samples - 1) + d - t]
+                    curr_u = u[n_samples - 1, j, (n_samples - 1) + d - t]
                 # alpha summation
                 if t - d >= 0:
                     alpha_addends[d] = alphastar[t - d, j] + log_durprob[j, d] + curr_u
@@ -59,7 +58,7 @@ def _forward(n_samples, n_states, n_durations,
             if t < t_iter - 1:
                 alphastar[t + 1, j] = logsumexp(astar_addends)
 
-# compute for u only: this will be used by score function in hsmm_base
+# compute for u only: this will be used by score and predict function in HSMM class
 def _u_only(n_samples, n_states, n_durations,
             log_obsprob, u):
     for t in range(n_samples):
@@ -124,20 +123,83 @@ def _smoothed(n_samples, n_states, n_durations,
                 elif t < n_samples - 1:
                     xi[t, i, j] = xi[t, i, j] + betastar[t + 1, j]
             # gamma computation
-            # note: this is the slow "original" method. the book provides a faster
-            # recursive method, but it requires subtraction and produced numerical
-            # inaccuracies from our initial tests. 
+            # note: this is the slow "original" method. the paper provides a faster
+            # recursive method (using xi), but it requires subtraction and produced
+            # numerical inaccuracies from our initial tests. 
             gamma[t, i] = float("-inf")
             for d in range(n_durations):
                 for e in range(n_durations):
                     if e >= d and (t + d < n_samples or right_censor != 0):
                         gamma[t, i] = logsumexp([gamma[t, i], eta[t + d, i, e]])
 
+# evaluate curr_u: this will be used by viterbi algorithm below
+def _curr_u(n_samples, u, t, j, d):
+    if t < n_samples:   # in range(n_samples)
+        return u[t, j, d]
+    elif d < t - (n_samples - 1):   # out range(n_samples)
+        return 0.0
+    else:   # out range(n_samples)
+        return u[n_samples - 1, j, (n_samples - 1) + d - t]
+
 # viterbi algorithm
 def _viterbi(n_samples, n_states, n_durations,
              log_startprob,
              log_transmat,
              log_duration,
-             log_observprob,
              right_censor, u):
+    # set # of rows for delta & delta_states
+    if right_censor == 0:
+        t_rows = n_samples
+    else:
+        t_rows = n_samples + n_durations - 1
+
+    last_time = np.full(n_states, -1, dtype=np.int32)
+    next_time = np.empty(n_states, dtype=np.int32)
+    buffer0 = np.empty(n_states)
+    buffer1 = np.empty(n_durations)
+    buffer1_state = np.empty(n_durations, dtype=np.int32)
+    delta = np.empty((t_rows, n_states))
+    delta_info = np.full((t_rows, n_states, 2), -1, dtype=np.int32)
+    
+    # forward pass
+    unfin_states = n_states   # at the beginning, all states are unfinished
+    while unfin_states > 1:
+        for j in range(n_states):
+            if (right_censor == 1 and last_time[j] >= n_samples - 1) or \
+               (right_censor == 0 and last_time[j] == n_samples - 1):
+                continue   # skip every completed j
+            elif right_censor == 0 and last_time[j] + n_durations > n_samples - 1:
+                dur_range = (n_samples - 1) - last_time[j]
+            else:
+                dur_range = n_durations
+            for d in range(dur_range):
+                if last_time[j] == -1:   # first while loop iteration
+                    buffer1[d] = log_startprob[j] + log_duration[j, d] + \
+                                 _curr_u(n_samples, u, d, j, d)
+                else:
+                    for i in range(n_states):
+                        if i != j and last_time[i] < n_samples - 1: 
+                            buffer0[i] = delta[last_time[i], i] + log_transmat[i, j] + \
+                                         _curr_u(n_samples, u, last_time[i] + d + 1, j, d)
+                        else:
+                            buffer0[i] = float("-inf")
+                    buffer1[d] = np.max(buffer0) + log_duration[j, d]
+                    buffer1_state[d] = np.argmax(buffer0)
+            new_dur = np.argmax(buffer1)
+            if last_time[j] == -1:   # first while loop iteration
+                new_time = new_dur
+            else:
+                new_time = last_time[buffer1_state[new_dur]] + new_dur + 1
+                delta_info[new_time, j, 0] = buffer1_state[new_dur]   # delta_info [:, :, 0] -> state
+                delta_info[new_time, j, 1] = new_dur   # delta_info [:, :, 1] -> duration
+            delta[new_time, j] = np.max(buffer1)
+            next_time[j] = new_time
+        # update last_time and count unfinished states
+        unfin_states = 0
+        for j in range(n_states):
+            last_time[j] = next_time[j]
+            if next_time[j] < n_samples - 1:
+                unfin_states += 1   # state j is unfinished
+    # backward pass
     pass
+    print(delta_info)   # DEBUG
