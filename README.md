@@ -1,5 +1,5 @@
-# edhmm
-An **incomplete** implementation of Explicit Duration Hidden Semi-Markov Model (EDHSMM) in Python 3. Supports right-censoring, but no left-censoring.
+# edhsmm
+An **incomplete** implementation of Explicit Duration Hidden Semi-Markov Model (EDHSMM) in Python 3.
 
 This exists because I attempted to "improve" a project, but because of the COVID-19 pandemic and time constraint, I decided to not apply this anymore. Anyways, I will still try to complete this in the future.
 
@@ -13,7 +13,7 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 
 #### Implemented so far
 - EM Algorithm (with & without right-censoring) 
-- EDHMM with Gaussian Emissions
+- EDHSMM with Gaussian Emissions
 - Scoring (log-likelihood of observation under the model)
 
 #### To be Implemented
