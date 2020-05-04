@@ -1,7 +1,7 @@
 # edhsmm
 An **incomplete** implementation of Explicit Duration Hidden Semi-Markov Model (EDHSMM) in Python 3.
 
-This exists because I attempted to "improve" a project, but because of the COVID-19 pandemic and time constraint, I decided to not apply this anymore. Anyways, I will still try to complete this in the future.
+This exists because I attempted to improve a project, but because of the COVID-19 pandemic and time constraint, I decided to not apply this anymore. Anyways, I will still try to complete this in the future.
 
 I have very little knowledge in software development, so this is where I need most help.
 
@@ -18,7 +18,7 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 
 #### To be Implemented
 - Viterbi Algorithm
-- EM Algorithm with Multiple Observations
+- EM Algorithm with multiple observation sequences
 - Cythoning the core algorithms
 - Generate samples
 - *and a lot more* (to be posted in [issues](https://github.com/poypoyan/edhmm/issues))
