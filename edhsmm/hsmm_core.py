@@ -32,15 +32,15 @@ def _forward(n_samples, n_states, n_durations,
         for j in range(n_states):
             for d in range(n_durations):
                 # evaluate u_t(j, d) and curr_u
-                if t < n_samples:   # in range(n_samples)
+                if t < n_samples:
                     if t < 1 or d < 1:
                         u[t, j, d] = log_obsprob[t, j]
                     else:
                         u[t, j, d] = u[t - 1, j, d - 1] + log_obsprob[t, j]
                     curr_u = u[t, j, d]
-                elif d < t - (n_samples - 1):   # out range(n_samples)
+                elif d < t - (n_samples - 1):
                     curr_u = 0.0
-                else:   # out range(n_samples)
+                else:
                     curr_u = u[n_samples - 1, j, (n_samples - 1) + d - t]
                 # alpha summation
                 if t - d >= 0:
@@ -134,11 +134,11 @@ def _smoothed(n_samples, n_states, n_durations,
 
 # evaluate curr_u: this will be used by viterbi algorithm below
 def _curr_u(n_samples, u, t, j, d):
-    if t < n_samples:   # in range(n_samples)
+    if t < n_samples:
         return u[t, j, d]
-    elif d < t - (n_samples - 1):   # out range(n_samples)
+    elif d < t - (n_samples - 1):
         return 0.0
-    else:   # out range(n_samples)
+    else:
         return u[n_samples - 1, j, (n_samples - 1) + d - t]
 
 # viterbi algorithm
@@ -167,26 +167,27 @@ def _viterbi(n_samples, n_states, n_durations,
         for j in range(n_states):
             if (right_censor == 1 and last_time[j] >= n_samples - 1) or \
                (right_censor == 0 and last_time[j] == n_samples - 1):
-                continue   # skip every completed j
-            elif right_censor == 0 and last_time[j] + n_durations > n_samples - 1:
-                dur_range = (n_samples - 1) - last_time[j]
-            else:
-                dur_range = n_durations
-            for d in range(dur_range):
-                if last_time[j] == -1:   # first while loop iteration
-                    buffer1[d] = log_startprob[j] + log_duration[j, d] + \
-                                 _curr_u(n_samples, u, d, j, d)
+                continue   # skip every finished j
+            for d in range(n_durations):
+                if last_time[j] == -1:   # if first while loop iteration
+                    if right_censor == 0 and d > n_samples - 1:
+                        buffer1[d] = float("-inf")
+                    else:
+                        buffer1[d] = log_startprob[j] + log_duration[j, d] + \
+                                     _curr_u(n_samples, u, d, j, d)
                 else:
                     for i in range(n_states):
-                        if i != j and last_time[i] < n_samples - 1: 
-                            buffer0[i] = delta[last_time[i], i] + log_transmat[i, j] + \
-                                         _curr_u(n_samples, u, last_time[i] + d + 1, j, d)
-                        else:
+                        i_time = last_time[i] + d + 1
+                        if (i == j) or (last_time[i] >= n_samples - 1) or \
+                           (right_censor == 0 and i_time > n_samples - 1):
                             buffer0[i] = float("-inf")
+                        else:
+                            buffer0[i] = delta[last_time[i], i] + log_transmat[i, j] + \
+                                         _curr_u(n_samples, u, i_time, j, d)
                     buffer1[d] = np.max(buffer0) + log_duration[j, d]
                     buffer1_state[d] = np.argmax(buffer0)
             new_dur = np.argmax(buffer1)
-            if last_time[j] == -1:   # first while loop iteration
+            if last_time[j] == -1:   # if first while loop iteration
                 new_time = new_dur
             else:
                 new_time = last_time[buffer1_state[new_dur]] + new_dur + 1
