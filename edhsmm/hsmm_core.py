@@ -9,12 +9,32 @@ from scipy.special import logsumexp
 
 # ctypedef double dtype_t
 
+# compute for u_t(j, d)
+def _u_only(n_samples, n_states, n_durations,
+            log_obsprob, u):
+    # cdef int t, j, d
+    for t in range(n_samples):
+        for j in range(n_states):
+            for d in range(n_durations):
+                if t < 1 or d < 1:
+                    u[t, j, d] = log_obsprob[t, j]
+                else:
+                    u[t, j, d] = u[t - 1, j, d - 1] + log_obsprob[t, j]
+
+# evaluate current u_t(j, d). extends to t > n_samples - 1.
+def _curr_u(n_samples, u, t, j, d):
+    if t < n_samples:
+        return u[t, j, d]
+    elif d < t - (n_samples - 1):
+        return 0.0
+    else:
+        return u[n_samples - 1, j, (n_samples - 1) + d - t]
+
 # forward algorithm
 def _forward(n_samples, n_states, n_durations,
              log_startprob,
              log_transmat,
              log_durprob,
-             log_obsprob,
              right_censor,
              eta, u, xi):
     # set number of iterations for t
@@ -34,20 +54,10 @@ def _forward(n_samples, n_states, n_durations,
     for t in range(t_iter):
         for j in range(n_states):
             for d in range(n_durations):
-                # evaluate u_t(j, d) and curr_u
-                if t < n_samples:
-                    if t < 1 or d < 1:
-                        u[t, j, d] = log_obsprob[t, j]
-                    else:
-                        u[t, j, d] = u[t - 1, j, d - 1] + log_obsprob[t, j]
-                    curr_u = u[t, j, d]
-                elif d < t - (n_samples - 1):
-                    curr_u = 0.0
-                else:
-                    curr_u = u[n_samples - 1, j, (n_samples - 1) + d - t]
                 # alpha summation
                 if t - d >= 0:
-                    alpha_addends[d] = alphastar[t - d, j] + log_durprob[j, d] + curr_u
+                    alpha_addends[d] = alphastar[t - d, j] + log_durprob[j, d] + \
+                                       _curr_u(n_samples, u, t, j, d)
                 else:
                     alpha_addends[d] = float("-inf")
                 eta[t, j, d] = alpha_addends[d]   # eta initial
@@ -61,24 +71,11 @@ def _forward(n_samples, n_states, n_durations,
             if t < t_iter - 1:
                 alphastar[t + 1, j] = logsumexp(astar_addends)
 
-# compute for u only: this will be used by score and predict function in HSMM class
-def _u_only(n_samples, n_states, n_durations,
-            log_obsprob, u):
-    # cdef int t, j, d
-    for t in range(n_samples):
-        for j in range(n_states):
-            for d in range(n_durations):
-                if t < 1 or d < 1:
-                    u[t, j, d] = log_obsprob[t, j]
-                else:
-                    u[t, j, d] = u[t - 1, j, d - 1] + log_obsprob[t, j]
-
 # backward algorithm
 def _backward(n_samples, n_states, n_durations,
              log_startprob,
              log_transmat,
              log_durprob,
-             log_observprob,
              right_censor,
              beta, u, betastar):
     # cdef int t, j, d, i
@@ -138,15 +135,6 @@ def _smoothed(n_samples, n_states, n_durations,
                     if h >= d and (t + d < n_samples or right_censor != 0):
                         gamma[t, i] = logsumexp([gamma[t, i], eta[t + d, i, h]])   # logaddexp
 
-# evaluate curr_u: this will be used by viterbi algorithm below
-def _curr_u(n_samples, u, t, j, d):
-    if t < n_samples:
-        return u[t, j, d]
-    elif d < t - (n_samples - 1):
-        return 0.0
-    else:
-        return u[n_samples - 1, j, (n_samples - 1) + d - t]
-
 # viterbi algorithm
 def _viterbi(n_samples, n_states, n_durations,
              log_startprob,
@@ -158,7 +146,58 @@ def _viterbi(n_samples, n_states, n_durations,
         t_iter = n_samples   # cdef int
     else:
         t_iter = n_samples + n_durations - 1   # cdef int
-    # cdef int t, j, d, i, h
+    # cdef int t, j, d, i, j_dur, back_state, back_dur, back_t
+    # cdef dtype_t log_prob
+    delta = np.empty((t_iter, n_states))
+    psi = np.empty((t_iter, n_states, 2), dtype=np.int32)
+    buffer0 = np.empty(n_states)
+    buffer1 = np.empty(n_durations)
+    buffer1_state = np.empty(n_durations, dtype=np.int32)
+    state_sequence = np.empty(n_samples, dtype=np.int32)
     # forward pass
+    for t in range(t_iter):
+        for j in range(n_states):
+            for d in range(n_durations):
+                if t - d == 0:   # beginning
+                    buffer1[d] = log_startprob[j] + log_duration[j, d] + \
+                                  _curr_u(n_samples, u, t, j, d)
+                    buffer1_state[d] = -1   # place-holder only
+                elif t - d > 0:   # ongoing
+                    for i in range(n_states):
+                        if i != j:
+                            buffer0[i] = delta[t - d - 1, i] + log_transmat[i, j] + \
+                                         _curr_u(n_samples, u, t, j, d)         
+                        else:
+                            buffer0[i] = float("-inf")
+                    buffer1[d] = np.max(buffer0) + log_duration[j, d]
+                    buffer1_state[d] = np.argmax(buffer0)
+                else:   # this should not be chosen
+                    buffer1[d] = float("-inf")
+            j_dur = np.argmax(buffer1)
+            delta[t, j] = np.max(buffer1)
+            psi[t, j, 0] = j_dur   # psi[:, j, 0] is the duration of j
+            psi[t, j, 1] = buffer1_state[j_dur]   # psi[:, j, 1] is the state leading to j
+    # getting the last state and maximum log probability
+    if right_censor == 0:
+        log_prob = np.max(delta[n_samples - 1])
+        back_state = np.argmax(delta[n_samples - 1])
+        back_dur = psi[n_samples - 1, back_state, 0]
+    else:
+        for d in range(n_durations):
+            buffer1[d] = np.max(delta[n_samples + d - 1])
+            buffer1_state[d] = np.argmax(delta[n_samples + d - 1])
+        log_prob = np.max(buffer1)
+        j_dur = np.argmax(buffer1)
+        back_state = buffer1_state[j_dur]
+        back_dur = psi[n_samples + j_dur - 1, back_state, 0] - j_dur
     # backward pass
-    pass
+    back_t = n_samples - 1
+    for t in range(n_samples - 1, -1, -1):
+        if back_dur < 0:
+            back_state = psi[back_t, back_state, 1]
+            back_dur = psi[t, back_state, 0]
+            back_t = t
+        state_sequence[t] = back_state
+        back_dur -= 1
+    
+    return log_prob, np.asarray(state_sequence)
