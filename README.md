@@ -5,7 +5,7 @@ This exists because I attempted to improve a project, but because of the COVID-1
 
 I have very little knowledge in software development, so this is where I need most help.
 
-The algorithms are based on [Yu(2010)](https://www.sciencedirect.com/science/article/pii/S0004370209001416).
+The EM algorithm is based on [Yu(2010)](https://www.sciencedirect.com/science/article/pii/S0004370209001416), while the Viterbi algorithm will be based on [Benouareth et al.(2008)](https://link.springer.com/article/10.1155/2008/247354).
 
 The code style is based on [hmmlearn](https://github.com/hmmlearn/hmmlearn) and [jvkersch/hsmmlearn](https://github.com/jvkersch/hsmmlearn).
 
