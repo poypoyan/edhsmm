@@ -50,7 +50,7 @@ class HSMM:
                       log_mask_zero(self.pi),
                       log_mask_zero(self.tmat),
                       log_mask_zero(self.dur),
-                      logframe, censoring, beta, u, betastar)
+                      censoring, beta, u, betastar)
         # compute for gamma for t=0
         gammazero = log_mask_zero(self.pi) + betastar[0, :]
         return logsumexp(gammazero)   # the summation over states is the score
@@ -72,16 +72,18 @@ class HSMM:
         # main loop
         for itera in range(self.n_iter):
             # core stuff
+            core._u_only(n_samples, self.n_states, self.n_durations,
+                         logframe, u)
             core._forward(n_samples, self.n_states, self.n_durations,
                       log_mask_zero(self.pi),
                       log_mask_zero(self.tmat),
                       log_mask_zero(self.dur),
-                      logframe, censoring, eta, u, xi)
+                      censoring, eta, u, xi)
             core._backward(n_samples, self.n_states, self.n_durations,
                       log_mask_zero(self.pi),
                       log_mask_zero(self.tmat),
                       log_mask_zero(self.dur),
-                      logframe, censoring, beta, u, betastar)
+                      censoring, beta, u, betastar)
             core._smoothed(n_samples, self.n_states, self.n_durations,
                        beta, betastar, censoring, eta, xi, gamma)
             # check for loop break
@@ -112,12 +114,12 @@ class HSMM:
         # core stuff
         core._u_only(n_samples, self.n_states, self.n_durations,
                      logframe, u)
-        core._viterbi(n_samples, self.n_states, self.n_durations,
-                      log_mask_zero(self.pi),
-                      log_mask_zero(self.tmat),
-                      log_mask_zero(self.dur),
-                      censoring, u)
-        return   # it should return state_seq, and logprob
+        log_prob, state_sequence = core._viterbi(n_samples, self.n_states, self.n_durations,
+                                                 log_mask_zero(self.pi),
+                                                 log_mask_zero(self.tmat),
+                                                 log_mask_zero(self.dur),
+                                                 censoring, u)
+        return log_prob, state_sequence
 
 # Simple Gaussian Explicit Duration HSMM
 class GaussianHSMM(HSMM):
