@@ -7,6 +7,8 @@
 import numpy as np
 from scipy.special import logsumexp
 
+# ctypedef double dtype_t
+
 # forward algorithm
 def _forward(n_samples, n_states, n_durations,
              log_startprob,
@@ -17,10 +19,11 @@ def _forward(n_samples, n_states, n_durations,
              eta, u, xi):
     # set number of iterations for t
     if right_censor == 0:
-        t_iter = n_samples
+        t_iter = n_samples   # cdef int
     else:
-        t_iter = n_samples + n_durations - 1
-
+        t_iter = n_samples + n_durations - 1   # cdef int
+    # cdef int t, j, d, i
+    # cdef dtype_t curr_u
     alpha_addends = np.empty(n_durations)
     astar_addends = np.empty(n_states)
     alpha = np.empty(n_states)
@@ -61,6 +64,7 @@ def _forward(n_samples, n_states, n_durations,
 # compute for u only: this will be used by score and predict function in HSMM class
 def _u_only(n_samples, n_states, n_durations,
             log_obsprob, u):
+    # cdef int t, j, d
     for t in range(n_samples):
         for j in range(n_states):
             for d in range(n_durations):
@@ -77,6 +81,7 @@ def _backward(n_samples, n_states, n_durations,
              log_observprob,
              right_censor,
              beta, u, betastar):
+    # cdef int t, j, d, i
     bstar_addends = np.empty(n_durations)
     beta_addends = np.empty(n_states)
 
@@ -105,6 +110,7 @@ def _smoothed(n_samples, n_states, n_durations,
               beta, betastar,
               right_censor,
               eta, xi, gamma):
+    # cdef int t, j, d, i, h
     for t in range(n_samples - 1, -1, -1):
         for i in range(n_states):
             # eta computation
@@ -128,9 +134,9 @@ def _smoothed(n_samples, n_states, n_durations,
             # numerical inaccuracies from our initial tests. 
             gamma[t, i] = float("-inf")
             for d in range(n_durations):
-                for e in range(n_durations):
-                    if e >= d and (t + d < n_samples or right_censor != 0):
-                        gamma[t, i] = logsumexp([gamma[t, i], eta[t + d, i, e]])
+                for h in range(n_durations):
+                    if h >= d and (t + d < n_samples or right_censor != 0):
+                        gamma[t, i] = logsumexp([gamma[t, i], eta[t + d, i, h]])   # logaddexp
 
 # evaluate curr_u: this will be used by viterbi algorithm below
 def _curr_u(n_samples, u, t, j, d):
@@ -147,60 +153,12 @@ def _viterbi(n_samples, n_states, n_durations,
              log_transmat,
              log_duration,
              right_censor, u):
-    # set # of rows for delta & delta_states
+    # set number of iterations for t
     if right_censor == 0:
-        t_rows = n_samples
+        t_iter = n_samples   # cdef int
     else:
-        t_rows = n_samples + n_durations - 1
-
-    last_time = np.full(n_states, -1, dtype=np.int32)
-    next_time = np.empty(n_states, dtype=np.int32)
-    buffer0 = np.empty(n_states)
-    buffer1 = np.empty(n_durations)
-    buffer1_state = np.empty(n_durations, dtype=np.int32)
-    delta = np.empty((t_rows, n_states))
-    delta_info = np.full((t_rows, n_states, 2), -1, dtype=np.int32)
-    
+        t_iter = n_samples + n_durations - 1   # cdef int
+    # cdef int t, j, d, i, h
     # forward pass
-    unfin_states = n_states   # at the beginning, all states are unfinished
-    while unfin_states > 1:
-        for j in range(n_states):
-            if (right_censor == 1 and last_time[j] >= n_samples - 1) or \
-               (right_censor == 0 and last_time[j] == n_samples - 1):
-                continue   # skip every finished j
-            for d in range(n_durations):
-                if last_time[j] == -1:   # if first while loop iteration
-                    if right_censor == 0 and d > n_samples - 1:
-                        buffer1[d] = float("-inf")
-                    else:
-                        buffer1[d] = log_startprob[j] + log_duration[j, d] + \
-                                     _curr_u(n_samples, u, d, j, d)
-                else:
-                    for i in range(n_states):
-                        i_time = last_time[i] + d + 1
-                        if (i == j) or (last_time[i] >= n_samples - 1) or \
-                           (right_censor == 0 and i_time > n_samples - 1):
-                            buffer0[i] = float("-inf")
-                        else:
-                            buffer0[i] = delta[last_time[i], i] + log_transmat[i, j] + \
-                                         _curr_u(n_samples, u, i_time, j, d)
-                    buffer1[d] = np.max(buffer0) + log_duration[j, d]
-                    buffer1_state[d] = np.argmax(buffer0)
-            new_dur = np.argmax(buffer1)
-            if last_time[j] == -1:   # if first while loop iteration
-                new_time = new_dur
-            else:
-                new_time = last_time[buffer1_state[new_dur]] + new_dur + 1
-                delta_info[new_time, j, 0] = buffer1_state[new_dur]   # delta_info [:, :, 0] -> state
-                delta_info[new_time, j, 1] = new_dur   # delta_info [:, :, 1] -> duration
-            delta[new_time, j] = np.max(buffer1)
-            next_time[j] = new_time
-        # update last_time and count unfinished states
-        unfin_states = 0
-        for j in range(n_states):
-            last_time[j] = next_time[j]
-            if next_time[j] < n_samples - 1:
-                unfin_states += 1   # state j is unfinished
     # backward pass
     pass
-    print(delta_info)   # DEBUG
