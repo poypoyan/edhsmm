@@ -24,4 +24,4 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 - Generate samples
 - *and a lot more* (to be posted in [issues](https://github.com/poypoyan/edhmm/issues))
 
-Please report any bugs on issues. 😊
+ Found a bug? Suggest a feature? Please post on issues. 😊
