@@ -26,14 +26,15 @@ class HSMM:
     def check(self):
         pass   # lazy for this
     # emission_logprob: compute the log-likelihood per state of each observation
-    def emission_logprob(self, X):
-        # note: subclass will implement this.
-        # it should *return* the logframe.
-        pass
+    def emission_logprob(self):
+        # arguments: (self, X)
+        # return: logframe
+        pass   # implemented in subclass
     # emission_mstep: perform m-step on emission parameters
-    def emission_mstep(self, X, gamma, lengths=None):
-        # note: subclass will implement this.
-        pass
+    def emission_mstep(self):
+        # arguments: (self, X, gamma, lengths=None)
+        # return: None
+        pass   # implemented in subclass
     # score: compute the log-likelihood of the whole observation series
     def score(self, X, lengths=None, censoring=1):
         self.init()
@@ -41,8 +42,8 @@ class HSMM:
         logframe = self.emission_logprob(X)
         n_samples = logframe.shape[0]
         # setup required probability tables
-        beta = np.zeros((n_samples, self.n_states))
-        betastar = np.zeros((n_samples, self.n_states))
+        beta = np.empty((n_samples, self.n_states))
+        betastar = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
         # core stuff
         core._u_only(n_samples, self.n_states, self.n_durations,
@@ -62,11 +63,11 @@ class HSMM:
         logframe = self.emission_logprob(X)
         n_samples = logframe.shape[0]
         # setup required probability tables
-        beta = np.zeros((n_samples, self.n_states))
-        betastar = np.zeros((n_samples, self.n_states))
+        beta = np.empty((n_samples, self.n_states))
+        betastar = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
         xi = np.empty((n_samples, self.n_states, self.n_states))
-        gamma = np.zeros((n_samples, self.n_states))
+        gamma = np.empty((n_samples, self.n_states))
         if censoring == 0:   # without right censoring
             eta = np.empty((n_samples, self.n_states, self.n_durations))
         else:   # with right censoring
