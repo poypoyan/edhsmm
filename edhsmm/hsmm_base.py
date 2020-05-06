@@ -36,6 +36,7 @@ class HSMM:
         pass
     # score: compute the log-likelihood of the whole observation series
     def score(self, X, lengths=None, censoring=1):
+        self.init()
         self.check()
         logframe = self.emission_logprob(X)
         n_samples = logframe.shape[0]
@@ -56,6 +57,7 @@ class HSMM:
         return logsumexp(gammazero)   # the summation over states is the score
     # fit
     def fit(self, X, lengths=None, censoring=1):
+        self.init()
         self.check()
         logframe = self.emission_logprob(X)
         n_samples = logframe.shape[0]
@@ -106,6 +108,7 @@ class HSMM:
             print("FIT: reestimation complete for ", (itera + 1), "th loop.", sep="")
     # predict
     def predict(self, X, lengths=None, censoring=1):
+        self.init()
         self.check()
         logframe = self.emission_logprob(X)
         n_samples = logframe.shape[0]
@@ -125,11 +128,11 @@ class HSMM:
 class GaussianHSMM(HSMM):
     def __init__(self, n_states=1, n_durations=5, n_iter=20, tol=1e-2):
         super().__init__(n_states, n_durations, n_iter, tol)
-    def init(self, X):
+    def init(self): # (self, X, lengths=None) in the future
         super().init()
-        if not hasattr(self, "means"):
-            # rhis for now because lazy. in practice, use K-means
-            self.means = np.full(self.n_states, 0.0)
+        if not hasattr(self, "mean"):
+            # this for now because lazy. in practice, use K-means
+            self.mean = np.full(self.n_states, 0.0)
         if not hasattr(self, "sdev"):
             self.sdev = np.full(self.n_states, 1.0)
     def emission_logprob(self, X):
@@ -137,12 +140,12 @@ class GaussianHSMM(HSMM):
         n_samples = series.shape[0]
         frame = np.empty((n_samples, self.n_states))
         for i in range(self.n_states):
-            gauss = scipy.stats.norm(self.means[i], self.sdev[i])
+            gauss = scipy.stats.norm(self.mean[i], self.sdev[i])
             for j in range(n_samples):
-                frame[j, i] = np.log(gauss.pdf(series[j]))
+                frame[j, i] = log_mask_zero(gauss.pdf(series[j]))
         return frame
     def emission_mstep(self, X, gamma, lengths=None):
         # based from hsmmlearn
         denominator = gamma.sum(0)
-        self.means = (gamma * X[None].T).sum(0) / denominator
-        self.sdev = np.sqrt((gamma * ((X - self.means[:, None]) ** 2).T).sum(0) / denominator)
+        self.mean = (gamma * X[None].T).sum(0) / denominator
+        self.sdev = np.sqrt((gamma * ((X - self.mean[:, None]) ** 2).T).sum(0) / denominator)
