@@ -117,12 +117,12 @@ class HSMM:
         # core stuff
         core._u_only(n_samples, self.n_states, self.n_durations,
                      logframe, u)
-        log_prob, state_sequence = core._viterbi(n_samples, self.n_states, self.n_durations,
+        state_sequence, log_prob = core._viterbi(n_samples, self.n_states, self.n_durations,
                                                  log_mask_zero(self.pi),
                                                  log_mask_zero(self.tmat),
                                                  log_mask_zero(self.dur),
                                                  censoring, u)
-        return log_prob, state_sequence
+        return state_sequence, log_prob
 
 # Simple Gaussian Explicit Duration HSMM
 class GaussianHSMM(HSMM):
