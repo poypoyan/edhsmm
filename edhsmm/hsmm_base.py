@@ -23,12 +23,12 @@ class HSMM:
         if not hasattr(self, "dur"):
             self.dur = np.full((self.n_states, self.n_durations), 1.0 / self.n_durations)
     # check: check if properties of model parameters are satisfied
-    def check(self):
-        pass   # lazy for this
+    def check(self, X):
+        pass   # TODO
     # emission_logprob: compute the log-likelihood per state of each observation
     def emission_logprob(self):
-        # arguments: (self, X)
-        # return: logframe
+        # arguments: (self, X, logframe)
+        # return: status_code, error_info
         pass   # implemented in subclass
     # emission_mstep: perform m-step on emission parameters
     def emission_mstep(self):
@@ -38,14 +38,18 @@ class HSMM:
     # score: compute the log-likelihood of the whole observation series
     def score(self, X, lengths=None, censoring=1):
         self.init()
-        self.check()
-        logframe = self.emission_logprob(X)
-        n_samples = logframe.shape[0]
+        self.check(X)
+        n_samples = X.shape[0]
         # setup required probability tables
+        logframe = np.empty((n_samples, self.n_states))
         beta = np.empty((n_samples, self.n_states))
         betastar = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
-        # core stuff
+        # main computations
+        em_status, em_info = self.emission_logprob(X, logframe)
+        if em_status == -1:
+            print("SCORE: (ABORT) ", em_info, sep="")
+            return None
         core._u_only(n_samples, self.n_states, self.n_durations,
                      logframe, u)
         core._backward(n_samples, self.n_states, self.n_durations,
@@ -54,15 +58,15 @@ class HSMM:
                       log_mask_zero(self.dur),
                       censoring, beta, u, betastar)
         # compute for gamma for t=0
-        gammazero = log_mask_zero(self.pi) + betastar[0, :]
+        gammazero = log_mask_zero(self.pi) + betastar[0]
         return logsumexp(gammazero)   # the summation over states is the score
     # fit
     def fit(self, X, lengths=None, censoring=1):
         self.init()
-        self.check()
-        logframe = self.emission_logprob(X)
-        n_samples = logframe.shape[0]
+        self.check(X)
+        n_samples = X.shape[0]
         # setup required probability tables
+        logframe = np.empty((n_samples, self.n_states))
         beta = np.empty((n_samples, self.n_states))
         betastar = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
@@ -74,7 +78,11 @@ class HSMM:
             eta = np.empty((n_samples + self.n_durations - 1, self.n_states, self.n_durations))
         # main loop
         for itera in range(self.n_iter):
-            # core stuff
+            # main computations
+            em_status, em_info = self.emission_logprob(X, logframe)
+            if em_status == -1:
+                print("FIT: (ABORT) ", em_info, sep="")
+                break
             core._u_only(n_samples, self.n_states, self.n_durations,
                          logframe, u)
             core._forward(n_samples, self.n_states, self.n_durations,
@@ -110,12 +118,16 @@ class HSMM:
     # predict
     def predict(self, X, lengths=None, censoring=1):
         self.init()
-        self.check()
-        logframe = self.emission_logprob(X)
-        n_samples = logframe.shape[0]
+        self.check(X)
+        n_samples = X.shape[0]
         # setup required probability tables
+        logframe = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
-        # core stuff
+        # main computations
+        em_status, em_info = self.emission_logprob(X, logframe)
+        if em_status == -1:
+            print("PREDICT: (ABORT) ", em_info, sep="")
+            return None, None
         core._u_only(n_samples, self.n_states, self.n_durations,
                      logframe, u)
         state_sequence, log_prob = core._viterbi(n_samples, self.n_states, self.n_durations,
@@ -132,19 +144,20 @@ class GaussianHSMM(HSMM):
     def init(self): # (self, X, lengths=None) in the future
         super().init()
         if not hasattr(self, "mean"):
-            # this for now because lazy. in practice, use K-means
+            # TODO: use K-means to determine means
             self.mean = np.full(self.n_states, 0.0)
         if not hasattr(self, "sdev"):
             self.sdev = np.full(self.n_states, 1.0)
-    def emission_logprob(self, X):
-        series = np.asarray(X)
-        n_samples = series.shape[0]
-        frame = np.empty((n_samples, self.n_states))
+    def emission_logprob(self, X, logframe):
+        # status: abort EM loop if any standard deviation becomes zero
+        if np.sum(self.sdev == 0.0) != 0:
+            return -1, "a stardard deviation is equal to 0."
+        n_samples = X.shape[0]
         for i in range(self.n_states):
             gauss = scipy.stats.norm(self.mean[i], self.sdev[i])
             for j in range(n_samples):
-                frame[j, i] = log_mask_zero(gauss.pdf(series[j]))
-        return frame
+                logframe[j, i] = log_mask_zero(gauss.pdf(X[j]))
+        return 0, "OK"
     def emission_mstep(self, X, gamma, lengths=None):
         # based from hsmmlearn
         denominator = gamma.sum(0)
