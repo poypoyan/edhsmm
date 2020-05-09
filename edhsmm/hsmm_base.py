@@ -46,9 +46,9 @@ class HSMM:
         betastar = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
         # main computations
-        em_status, em_info = self.emission_logprob(X, logframe)
-        if em_status == -1:
-            print("SCORE: (ABORT) ", em_info, sep="")
+        emi_status, emi_info = self.emission_logprob(X, logframe)
+        if emi_status == -1:
+            print("SCORE: (ABORT) ", emi_info, sep="")
             return None
         core._u_only(n_samples, self.n_states, self.n_durations,
                      logframe, u)
@@ -79,9 +79,9 @@ class HSMM:
         # main loop
         for itera in range(self.n_iter):
             # main computations
-            em_status, em_info = self.emission_logprob(X, logframe)
-            if em_status == -1:
-                print("FIT: (ABORT) ", em_info, sep="")
+            emi_status, emi_info = self.emission_logprob(X, logframe)
+            if emi_status == -1:
+                print("FIT: (ABORT) ", emi_info, sep="")
                 break
             core._u_only(n_samples, self.n_states, self.n_durations,
                          logframe, u)
@@ -124,9 +124,9 @@ class HSMM:
         logframe = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
         # main computations
-        em_status, em_info = self.emission_logprob(X, logframe)
-        if em_status == -1:
-            print("PREDICT: (ABORT) ", em_info, sep="")
+        emi_status, emi_info = self.emission_logprob(X, logframe)
+        if emi_status == -1:
+            print("PREDICT: (ABORT) ", emi_info, sep="")
             return None, None
         core._u_only(n_samples, self.n_states, self.n_durations,
                      logframe, u)
