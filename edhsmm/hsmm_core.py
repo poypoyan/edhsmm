@@ -117,13 +117,12 @@ def _smoothed(n_samples, n_states, n_durations,
             for d in range(n_durations):
                 eta[t, i, d] = eta[t, i, d] + beta[t, i]
             # xi computation
-            # note: at t == n_samples - 1, if with right censoring, then xi[t, i, j] will
-            # still be added with betastar[n_samples, j], but betastar[n_samples, j] = 0.
-            # hence no modifications to xi[n_samples - 1, :, :].
+            # note: at t == n_samples - 1, it is decided that xi[t, :, :] should be log(0),
+            # with right censoring or without, because there is no more next observation.
             for j in range(n_states):
-                if t == n_samples - 1 and right_censor == 0:
+                if t == n_samples - 1:
                     xi[t, i, j] = float("-inf")
-                elif t < n_samples - 1:
+                else:
                     xi[t, i, j] = xi[t, i, j] + betastar[t + 1, j]
             # gamma computation
             # note: this is the slow "original" method. the paper provides a faster
