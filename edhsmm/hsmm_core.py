@@ -118,7 +118,7 @@ def _smoothed(n_samples, n_states, n_durations,
                 eta[t, i, d] = eta[t, i, d] + beta[t, i]
             # xi computation
             # note: at t == n_samples - 1, it is decided that xi[t, :, :] should be log(0),
-            # with right censoring or without, because there is no more next observation.
+            # either with right censoring or without, because there is no more next data.
             for j in range(n_states):
                 if t == n_samples - 1:
                     xi[t, i, j] = float("-inf")
