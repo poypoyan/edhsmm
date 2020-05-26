@@ -1,7 +1,7 @@
 # edhsmm
 An(other) implementation of Explicit Duration Hidden Semi-Markov Model (EDHSMM) in Python 3.
 
-This exists because I attempted to improve a project, but because of the COVID-19 pandemic and time constraint, I decided to not apply this anymore. Anyways, I will still try to work on this in the future.
+This exists because I attempted to improve a project, but because of the COVID-19 pandemic, I decided to not apply this anymore. Anyways, I will still try to work on this in the future.
 
 I have very little knowledge in software development, so this is where I need most help.
 
@@ -22,6 +22,7 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 - EM Algorithm with multiple observation sequences
 - Cythoning the core algorithms
 - Generate samples
+- Allow parametric duration distribution (e.g. Poisson, Negative Binomial, etc.)
 - *and a lot more* (to be posted in [issues](https://github.com/poypoyan/edhmm/issues))
 
  Found a bug? Suggest a feature? Please post on issues. 😊
