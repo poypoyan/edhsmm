@@ -22,7 +22,7 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 - EM Algorithm with multiple observation sequences
 - Cythoning the core algorithms
 - Generate samples
-- Allow parametric duration distribution (e.g. Poisson, Negative Binomial, etc.)
+- ~~Customizable duration distribution~~ (12-Jun-2020)
 - *and a lot more* (to be posted in [issues](https://github.com/poypoyan/edhmm/issues))
 
  Found a bug? Suggest a feature? Please post on issues. 😊
