@@ -9,11 +9,11 @@ The EM algorithm is based on [Yu (2010)](https://www.sciencedirect.com/science/a
 
 The code style is based on [hmmlearn](https://github.com/hmmlearn/hmmlearn) and [jvkersch/hsmmlearn](https://github.com/jvkersch/hsmmlearn).
 
-I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (Python 3) on Windows (see the [notebooks](https://github.com/poypoyan/edhsmm/tree/master/notebooks)).
+I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (Python 3) on Windows (see the [notebooks](notebooks)).
 
 #### Implemented so far
 - EM Algorithm (with & without right-censoring) 
-- EDHSMM with Gaussian Emissions
+- EDHSMM with Multivariate Gaussian emissions 
 - Scoring (log-likelihood of observation under the model)
 - Viterbi Algorithm
 
