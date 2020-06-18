@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.stats
 from scipy.special import logsumexp
+from sklearn import cluster
 from sklearn.utils import check_array
 
 import hsmm_core as core
@@ -143,14 +144,11 @@ class HSMM:
             else:
                 old_score = score
             # reestimation / M-step
-            eta = np.exp(eta)
-            xi = np.exp(xi)
-            gamma = np.exp(gamma)
-            self.pi = gamma[0] / gamma[0].sum()
-            tmat_num = xi.sum(0)
-            self.tmat = tmat_num / tmat_num.sum(1)[None].T
-            dur_num = eta[0 : n_samples].sum(0)
-            new_dur = dur_num / dur_num.sum(1)[None].T
+            self.pi = np.exp(gamma[0] - logsumexp(gamma[0]))
+            tmat_num = logsumexp(xi, axis=0)
+            self.tmat = np.exp(tmat_num - logsumexp(tmat_num, axis=1)[None].T)
+            dur_num = logsumexp(eta[0:n_samples], axis=0)
+            new_dur = np.exp(dur_num - logsumexp(dur_num, axis=1)[None].T)
             self.dur_mstep(new_dur)   # new durations
             self.emission_mstep(X, gamma)   # new emissions
             print("FIT: reestimation complete for ", (itera + 1), "th loop.", sep="")
@@ -194,9 +192,11 @@ class GaussianHSMM(HSMM):
         if not hasattr(self, "dur"):   # non-parametric duration
             self.dur = np.full((self.n_states, self.n_durations), 1.0 / self.n_durations)
         if not hasattr(self, "mean"):
-            # TODO: use K-means to determine means
-            self.mean = np.full((self.n_states, self.n_dim), 0.0)
+            kmeans = cluster.KMeans(n_clusters=self.n_states)
+            kmeans.fit(X)
+            self.mean = kmeans.cluster_centers_
         if not hasattr(self, "covmat"):
+            # TODO: better initial covariance matrices
             self.covmat = np.repeat(np.identity(self.n_dim)[None], self.n_states, axis=0)
 
     # non-parametric duration
@@ -207,9 +207,12 @@ class GaussianHSMM(HSMM):
         self.dur = new_dur
         
     def emission_logprob(self, X, logframe):
-        # status: abort EM loop if any covariance matrix has determinant of 0
-        if np.sum(np.linalg.det(self.covmat) == 0) != 0:
-            return -1, "a covariance matrix has determinant of 0."
+        # status: abort EM loop if any covariance matrix is not symmetric, positive-definite.
+        # adapted from hmmlearn 0.2.3
+        for n, cv in enumerate(self.covmat):
+            if (not np.allclose(cv, cv.T) or np.any(np.linalg.eigvalsh(cv) <= 0)):
+                return -1, "component {} of covariance matrix is not symmetric, positive-definite.".format(n)
+                # https://www.youtube.com/watch?v=tWoFaPwbzqE&t=1694s
         n_samples = X.shape[0]
         for i in range(self.n_states):
             multigauss = scipy.stats.multivariate_normal(self.mean[i], self.covmat[i])
@@ -218,9 +221,11 @@ class GaussianHSMM(HSMM):
         return 0, "OK"
 
     def emission_mstep(self, X, gamma, lengths=None):
-        # compute means (from definition of weighted average)
-        denominator = (gamma[None].T).sum(1)
-        self.mean = (gamma[None].T * X).sum(1) / denominator
-        # compute covariance matrices (from definition of covariance; weighted)
+        # NOTE: gamma is still in logarithm form
+        denominator = logsumexp(gamma[None].T, axis=1)
+        weight_normalized = np.exp(gamma[None].T - denominator[:, None])
+        # compute means (from definition; weighted)
+        self.mean = (weight_normalized * X).sum(1)
+        # compute covariance matrices (from definition; weighted)
         dist = X - self.mean[:, None]
-        self.covmat = ((dist * gamma[None].T)[:, :, :, None] * dist[:, :, None]).sum(1) / denominator[:, None]
+        self.covmat = ((dist * weight_normalized)[:, :, :, None] * dist[:, :, None]).sum(1)
