@@ -1,6 +1,8 @@
 import numpy as np
 import scipy.stats
 from scipy.special import logsumexp
+from sklearn import cluster
+from sklearn.utils import check_array
 
 import hsmm_core as core
 from hsmm_utils import log_mask_zero
@@ -23,7 +25,7 @@ class HSMM:
                 self.tmat[i, i] = 0.0   # no self-transitions in HSMM
 
     # check: check if properties of model parameters are satisfied
-    def check(self, X):
+    def check(self):
         pass   # TODO
 
     # emission_logprob: compute the log-likelihood per state of each observation
@@ -48,7 +50,7 @@ class HSMM:
     def dur_logprob(self):
         """
         arguments: (self, logdur)
-        return: None
+        return: status_code, error_info
         > build the logdur
         """
         pass   # implemented in subclass
@@ -64,8 +66,9 @@ class HSMM:
 
     # score: log-likelihood computation from observation series
     def score(self, X, lengths=None, censoring=1):
-        self.init()
-        self.check(X)
+        X = check_array(X)
+        self.init(X, lengths=lengths)
+        self.check()
         n_samples = X.shape[0]
         # setup required probability tables
         logframe = np.empty((n_samples, self.n_states))
@@ -74,7 +77,10 @@ class HSMM:
         betastar = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
         # main computations
-        self.dur_logprob(logdur)   # build logdur
+        dur_status, dur_info = self.dur_logprob(logdur)   # build logdur
+        if dur_status == -1:
+            print("SCORE: (ABORT) ", dur_info, sep="")
+            return None
         emi_status, emi_info = self.emission_logprob(X, logframe)   # build logframe
         if emi_status == -1:
             print("SCORE: (ABORT) ", emi_info, sep="")
@@ -91,8 +97,9 @@ class HSMM:
 
     # fit: parameter estimation from observation series
     def fit(self, X, lengths=None, censoring=1):
-        self.init()
-        self.check(X)
+        X = check_array(X)
+        self.init(X, lengths=lengths)
+        self.check()
         n_samples = X.shape[0]
         # setup required probability tables
         logframe = np.empty((n_samples, self.n_states))
@@ -109,7 +116,10 @@ class HSMM:
         # main loop
         for itera in range(self.n_iter):
             # main computations
-            self.dur_logprob(logdur)   # build logdur
+            dur_status, dur_info = self.dur_logprob(logdur)   # build logdur
+            if dur_status == -1:
+                print("FIT: (ABORT) ", dur_info, sep="")
+                break
             emi_status, emi_info = self.emission_logprob(X, logframe)   # build logframe
             if emi_status == -1:
                 print("FIT: (ABORT) ", emi_info, sep="")
@@ -134,29 +144,30 @@ class HSMM:
             else:
                 old_score = score
             # reestimation / M-step
-            eta = np.exp(eta)
-            xi = np.exp(xi)
-            gamma = np.exp(gamma)
-            self.pi = gamma[0] / gamma[0].sum()
-            tmat_num = xi.sum(0)
-            self.tmat = tmat_num / tmat_num.sum(1)[None].T
-            dur_num = eta[0 : n_samples].sum(0)
-            new_dur = dur_num / dur_num.sum(1)[None].T
+            self.pi = np.exp(gamma[0] - logsumexp(gamma[0]))
+            tmat_num = logsumexp(xi, axis=0)
+            self.tmat = np.exp(tmat_num - logsumexp(tmat_num, axis=1)[None].T)
+            dur_num = logsumexp(eta[0:n_samples], axis=0)
+            new_dur = np.exp(dur_num - logsumexp(dur_num, axis=1)[None].T)
             self.dur_mstep(new_dur)   # new durations
             self.emission_mstep(X, gamma)   # new emissions
             print("FIT: reestimation complete for ", (itera + 1), "th loop.", sep="")
 
     # predict: hidden state & duration estimation from observation series
     def predict(self, X, lengths=None, censoring=1):
-        self.init()
-        self.check(X)
+        X = check_array(X)
+        self.init(X, lengths=lengths)
+        self.check()
         n_samples = X.shape[0]
         # setup required probability tables
         logframe = np.empty((n_samples, self.n_states))
         logdur = np.empty((self.n_states, self.n_durations))
         u = np.empty((n_samples, self.n_states, self.n_durations))
         # main computations
-        self.dur_logprob(logdur)   # build logdur
+        dur_status, dur_info = self.dur_logprob(logdur)   # build logdur
+        if dur_status == -1:
+            print("PREDICT: (ABORT) ", dur_info, sep="")
+            return None, None
         emi_status, emi_info = self.emission_logprob(X, logframe)   # build logframe
         if emi_status == -1:
             print("PREDICT: (ABORT) ", emi_info, sep="")
@@ -174,34 +185,47 @@ class GaussianHSMM(HSMM):
     def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2):
         super().__init__(n_states, n_durations, n_iter, tol)
 
-    def init(self): # (self, X, lengths=None) in the future
+    def init(self, X, lengths=None):
         super().init()
+        if not hasattr(self, "n_dim"):   # number of dimensions
+            self.n_dim = X.shape[1]
         if not hasattr(self, "dur"):   # non-parametric duration
             self.dur = np.full((self.n_states, self.n_durations), 1.0 / self.n_durations)
         if not hasattr(self, "mean"):
-            # TODO: use K-means to determine means
-            self.mean = np.full(self.n_states, 0.0)
-        if not hasattr(self, "sdev"):
-            self.sdev = np.full(self.n_states, 1.0)
+            kmeans = cluster.KMeans(n_clusters=self.n_states)
+            kmeans.fit(X)
+            self.mean = kmeans.cluster_centers_
+        if not hasattr(self, "covmat"):
+            # TODO: better initial covariance matrices
+            self.covmat = np.repeat(np.identity(self.n_dim)[None], self.n_states, axis=0)
 
     # non-parametric duration
     def dur_logprob(self, logdur):
         logdur[:] = log_mask_zero(self.dur)
+        return 0, "OK"
     def dur_mstep(self, new_dur):
         self.dur = new_dur
         
     def emission_logprob(self, X, logframe):
-        # status: abort EM loop if any standard deviation becomes zero
-        if np.sum(self.sdev == 0.0) != 0:
-            return -1, "a stardard deviation is equal to 0."
+        # status: abort EM loop if any covariance matrix is not symmetric, positive-definite.
+        # adapted from hmmlearn 0.2.3
+        for n, cv in enumerate(self.covmat):
+            if (not np.allclose(cv, cv.T) or np.any(np.linalg.eigvalsh(cv) <= 0)):
+                return -1, "component {} of covariance matrix is not symmetric, positive-definite.".format(n)
+                # https://www.youtube.com/watch?v=tWoFaPwbzqE&t=1694s
         n_samples = X.shape[0]
         for i in range(self.n_states):
-            gauss = scipy.stats.norm(self.mean[i], self.sdev[i])
+            multigauss = scipy.stats.multivariate_normal(self.mean[i], self.covmat[i])
             for j in range(n_samples):
-                logframe[j, i] = log_mask_zero(gauss.pdf(X[j]))
+                logframe[j, i] = log_mask_zero(multigauss.pdf(X[j]))
         return 0, "OK"
 
     def emission_mstep(self, X, gamma, lengths=None):
-        denominator = gamma.sum(0)
-        self.mean = (gamma * X[None].T).sum(0) / denominator
-        self.sdev = np.sqrt((gamma * ((X - self.mean[:, None]) ** 2).T).sum(0) / denominator)
+        # NOTE: gamma is still in logarithm form
+        denominator = logsumexp(gamma[None].T, axis=1)
+        weight_normalized = np.exp(gamma[None].T - denominator[:, None])
+        # compute means (from definition; weighted)
+        self.mean = (weight_normalized * X).sum(1)
+        # compute covariance matrices (from definition; weighted)
+        dist = X - self.mean[:, None]
+        self.covmat = ((dist * weight_normalized)[:, :, :, None] * dist[:, :, None]).sum(1)
