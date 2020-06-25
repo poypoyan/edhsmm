@@ -20,7 +20,7 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 #### To be Implemented
 - ~~Viterbi Algorithm~~ (06-May-2020)
 - EM Algorithm with multiple observation sequences
-- Cythoning the core algorithms
+- ~~Cythoning the core algorithms~~ (25-Jun-2020) (see the [hsmm_core_X.pyx](edhsmm/hsmm_core_X.pyx) and [setup.py](edhsmm/setup.py))
 - Generate samples
 - ~~Customizable duration distribution~~ (12-Jun-2020)
 - *and a lot more* (to be posted in [issues](https://github.com/poypoyan/edhmm/issues))
