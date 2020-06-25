@@ -5,6 +5,7 @@ from sklearn import cluster
 from sklearn.utils import check_array
 
 import hsmm_core as core
+# import hsmm_core_x as core # use if hsmm_core_x.pyx is compiled
 from hsmm_utils import log_mask_zero
 
 # Base Class for Explicit Duration HSMM
