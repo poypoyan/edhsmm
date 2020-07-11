@@ -4,13 +4,17 @@ from scipy.special import logsumexp
 from sklearn import cluster
 from sklearn.utils import check_array
 
-import hsmm_core as core
-# import hsmm_core_x as core # use if hsmm_core_x.pyx is compiled
+# import hsmm_core as core
+import hsmm_core_x as core # use if hsmm_core_x.pyx is compiled
 from hsmm_utils import log_mask_zero
 
 # Base Class for Explicit Duration HSMM
 class HSMM:
     def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2):
+        if not n_states >= 2:
+            raise ValueError("number of states (n_states) must be at least 2")
+        if not n_durations >= 1:
+            raise ValueError("number of durations (n_durations) must be at least 1")
         self.n_states = n_states
         self.n_durations = n_durations
         self.n_iter = n_iter
@@ -27,7 +31,21 @@ class HSMM:
 
     # check: check if properties of model parameters are satisfied
     def check(self):
-        pass   # TODO
+        # starting probabilities
+        self.pi = np.asarray(self.pi)
+        if self.pi.shape != (self.n_states, ):
+            raise ValueError("start probabilities (self.pi) must have shape ({},)".format(self.n_states))
+        if not np.allclose(self.pi.sum(), 1.0):
+            raise ValueError("start probabilities (self.pi) must add up to 1.0")
+        # transition probabilities
+        self.tmat = np.asarray(self.tmat)
+        if self.tmat.shape != (self.n_states, self.n_states):
+            raise ValueError("transition matrix (self.tmat) must have shape ({0}, {0})".format(self.n_states))
+        if not np.allclose(self.tmat.sum(axis=1), 1.0):
+            raise ValueError("transition matrix (self.tmat) must add up to 1.0")
+        for i in range(self.n_states):
+            if self.tmat[i, i] != 0.0:   # check for diagonals
+                raise ValueError("transition matrix (self.tmat) must have all diagonals equal to 0.0")
 
     # emission_logprob: compute the log-likelihood per state of each observation
     def emission_logprob(self):
@@ -200,11 +218,33 @@ class GaussianHSMM(HSMM):
             # TODO: better initial covariance matrices
             self.covmat = np.repeat(np.identity(self.n_dim)[None], self.n_states, axis=0)
 
-    # non-parametric duration
+    def check(self):
+        super().check()
+        # duration probabilities
+        self.dur = np.asarray(self.dur)
+        if self.dur.shape != (self.n_states, self.n_durations):
+            raise ValueError("duration probabilities (self.dur) must have shape ({}, {})"
+                             .format(self.n_states, self.n_durations))
+        if not np.allclose(self.dur.sum(axis=1), 1.0):
+            raise ValueError("duration probabilities (self.dur) must add up to 1.0")
+        # means
+        self.mean = np.asarray(self.mean)
+        if self.mean.shape != (self.n_states, self.n_dim):
+            raise ValueError("means (self.mean) must have shape ({}, {})"
+                             .format(self.n_states, self.n_dim))
+        # covariance matrices
+        self.covmat = np.asarray(self.covmat)
+        if self.covmat.shape != (self.n_states, self.n_dim, self.n_dim):
+            raise ValueError("covariance matrices (self.covmat) must have shape ({0}, {1}, {1})"
+                             .format(self.n_states, self.n_dim))
+
     def dur_logprob(self, logdur):
+        # non-parametric duration
         logdur[:] = log_mask_zero(self.dur)
         return 0, "OK"
+
     def dur_mstep(self, new_dur):
+        # non-parametric duration
         self.dur = new_dur
         
     def emission_logprob(self, X, logframe):
