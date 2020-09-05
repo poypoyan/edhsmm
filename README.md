@@ -25,6 +25,6 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 - ~~Customizable duration distribution~~ (12-Jun-2020)
 
 #### Unsure to be implemented
-- Left-censoring (I have difficulty understanding it)
+- Left-censoring (I have difficulty understanding and implementing it)
 
  Found a bug? Suggest a feature? Please post on [issues](https://github.com/poypoyan/edhmm/issues). 😊
