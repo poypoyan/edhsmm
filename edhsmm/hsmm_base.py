@@ -1,16 +1,16 @@
 import numpy as np
-import scipy.stats
+from scipy.stats import multivariate_normal
 from scipy.special import logsumexp
 from sklearn import cluster
-from sklearn.utils import check_array
+from sklearn.utils import check_array, check_random_state
 
 import hsmm_core as core
-# import hsmm_core_x as core # use if hsmm_core_x.pyx is compiled
+# import hsmm_core_x as core   # use if hsmm_core_x.pyx is compiled
 from hsmm_utils import log_mask_zero
 
 # Base Class for Explicit Duration HSMM
 class HSMM:
-    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2):
+    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, rnd_state=None):
         if not n_states >= 2:
             raise ValueError("number of states (n_states) must be at least 2")
         if not n_durations >= 1:
@@ -19,6 +19,7 @@ class HSMM:
         self.n_durations = n_durations
         self.n_iter = n_iter
         self.tol = tol
+        self.rnd_state = rnd_state
 
     # init: initializes model parameters if there are none yet.
     def init(self):
@@ -82,11 +83,50 @@ class HSMM:
         > compute the duration parameters
         """
         pass   # implemented in subclass
+    
+    # state_sample: generate 'observation' for given state
+    def state_sample(self):
+        """
+        arguments: (self, state, rnd_state=None)
+        return: 
+        > generate sample from state
+        """
+        pass   # implemented in subclass
+
+    # sample: generate random observation series
+    def sample(self, n_samples, censoring=1, rnd_state=None):
+        self.init(None)   # see "note for programmers" in init() in GaussianHSMM
+        self.check()
+        # setup random state
+        if rnd_state is None:
+            rnd_state = self.rnd_state
+        rnd_checked = check_random_state(rnd_state)
+        # adapted from hmmlearn 0.2.3 (see _BaseHMM.score function)
+        pi_cdf = np.cumsum(self.pi)
+        tmat_cdf = np.cumsum(self.tmat, axis=1)
+        dur_cdf = np.cumsum(self.dur, axis=1)
+        # for first state
+        currstate = (pi_cdf > rnd_checked.rand()).argmax()   # argmax() returns only the first occurrence
+        currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
+        state_sequence = [currstate] * currdur
+        X = [self.state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
+        ctr_sample = currdur
+        # for next state transitions
+        while ctr_sample < n_samples:
+            currstate = (tmat_cdf[currstate] > rnd_checked.rand()).argmax()
+            currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
+            # if with right censoring, cap the samples to n_samples
+            if censoring == 1 and (ctr_sample + currdur) > n_samples:
+                currdur = n_samples - ctr_sample
+            state_sequence += [currstate] * currdur
+            X += [self.state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
+            ctr_sample += currdur
+        return ctr_sample, np.atleast_2d(X), np.array(state_sequence, dtype=int)
 
     # score: log-likelihood computation from observation series
     def score(self, X, lengths=None, censoring=1):
         X = check_array(X)
-        self.init(X, lengths=lengths)
+        self.init(X)
         self.check()
         n_samples = X.shape[0]
         # setup required probability tables
@@ -117,7 +157,7 @@ class HSMM:
     # fit: parameter estimation from observation series
     def fit(self, X, lengths=None, censoring=1):
         X = check_array(X)
-        self.init(X, lengths=lengths)
+        self.init(X)
         self.check()
         n_samples = X.shape[0]
         # setup required probability tables
@@ -175,7 +215,7 @@ class HSMM:
     # predict: hidden state & duration estimation from observation series
     def predict(self, X, lengths=None, censoring=1):
         X = check_array(X)
-        self.init(X, lengths=lengths)
+        self.init(X)
         self.check()
         n_samples = X.shape[0]
         # setup required probability tables
@@ -201,22 +241,35 @@ class HSMM:
 
 # Simple Gaussian Explicit Duration HSMM
 class GaussianHSMM(HSMM):
-    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2):
-        super().__init__(n_states, n_durations, n_iter, tol)
+    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, rnd_state=None):
+        super().__init__(n_states, n_durations, n_iter, tol, rnd_state)
 
-    def init(self, X, lengths=None):
+    def init(self, X):
         super().init()
-        if not hasattr(self, "n_dim"):   # number of dimensions
-            self.n_dim = X.shape[1]
-        if not hasattr(self, "dur"):   # non-parametric duration
+        if not hasattr(self, "dur"):
+            # non-parametric duration
             self.dur = np.full((self.n_states, self.n_durations), 1.0 / self.n_durations)
+        # note for programmers: for every attribute that needs X in score()/predict()/fit(),
+        # there must be a condition 'if X is None' because sample() doesn't need an X, but
+        # default attribute values must be initiated for sample() to proceed.
+        if not hasattr(self, "n_dim"):
+            if X is None:   # default for sample()
+                self.n_dim = 1
+            else:
+                self.n_dim = X.shape[1]
         if not hasattr(self, "mean"):
-            kmeans = cluster.KMeans(n_clusters=self.n_states)
-            kmeans.fit(X)
-            self.mean = kmeans.cluster_centers_
+            if X is None:   # default for sample()
+                self.mean = np.full((self.n_states, self.n_dim), 0.0)
+            else:
+                kmeans = cluster.KMeans(n_clusters=self.n_states, random_state=self.rnd_state)
+                kmeans.fit(X)
+                self.mean = kmeans.cluster_centers_
         if not hasattr(self, "covmat"):
-            # TODO: better initial covariance matrices
-            self.covmat = np.repeat(np.identity(self.n_dim)[None], self.n_states, axis=0)
+            if X is None:   # default for sample()
+                self.covmat = np.repeat(np.identity(self.n_dim)[None], self.n_states, axis=0)
+            else:
+                # TODO: initial covariance matrices must be computed from X
+                self.covmat = np.repeat(np.identity(self.n_dim)[None], self.n_states, axis=0)
 
     def check(self):
         super().check()
@@ -249,14 +302,14 @@ class GaussianHSMM(HSMM):
         
     def emission_logprob(self, X, logframe):
         # status: abort EM loop if any covariance matrix is not symmetric, positive-definite.
-        # adapted from hmmlearn 0.2.3
+        # adapted from hmmlearn 0.2.3 (see _utils._validate_covars function)
         for n, cv in enumerate(self.covmat):
             if (not np.allclose(cv, cv.T) or np.any(np.linalg.eigvalsh(cv) <= 0)):
                 return -1, "component {} of covariance matrix is not symmetric, positive-definite.".format(n)
                 # https://www.youtube.com/watch?v=tWoFaPwbzqE&t=1694s
         n_samples = X.shape[0]
         for i in range(self.n_states):
-            multigauss = scipy.stats.multivariate_normal(self.mean[i], self.covmat[i])
+            multigauss = multivariate_normal(self.mean[i], self.covmat[i])
             for j in range(n_samples):
                 logframe[j, i] = log_mask_zero(multigauss.pdf(X[j]))
         return 0, "OK"
@@ -270,3 +323,7 @@ class GaussianHSMM(HSMM):
         # compute covariance matrices (from definition; weighted)
         dist = X - self.mean[:, None]
         self.covmat = ((dist * weight_normalized)[:, :, :, None] * dist[:, :, None]).sum(1)
+        
+    def state_sample(self, state, rnd_state=None):
+        rnd_checked = check_random_state(rnd_state)
+        return rnd_checked.multivariate_normal(self.mean[state], self.covmat[state])
