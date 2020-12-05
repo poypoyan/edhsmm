@@ -88,7 +88,7 @@ class HSMM:
     def state_sample(self):
         """
         arguments: (self, state, rnd_state=None)
-        return: 
+        return: np.ndarray of length self.n_dim
         > generate sample from state
         """
         pass   # implemented in subclass
