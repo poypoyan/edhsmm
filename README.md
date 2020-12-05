@@ -16,12 +16,13 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 - EDHSMM with Multivariate Gaussian emissions 
 - Scoring (log-likelihood of observation under the model)
 - Viterbi Algorithm
+- Generate samples
 
 #### Sure to be implemented
 - ~~Viterbi Algorithm~~ (06-May-2020)
 - EM Algorithm with multiple observation sequences
 - ~~Cythoning the core algorithms~~ (25-Jun-2020) (see the [hsmm_core_x.pyx](edhsmm/hsmm_core_x.pyx) and [setup.py](edhsmm/setup.py))
-- Generate samples
+- ~~Generate samples~~ (06-Dec-2020)
 - ~~Customizable duration distribution~~ (12-Jun-2020)
 
 #### Unsure to be implemented
