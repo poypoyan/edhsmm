@@ -108,6 +108,9 @@ class HSMM:
         # for first state
         currstate = (pi_cdf > rnd_checked.rand()).argmax()   # argmax() returns only the first occurrence
         currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
+        if censoring == 0 and currdur > n_samples:
+            print("SAMPLE: n_samples is too small to contain the first state duration.")
+            return None
         state_sequence = [currstate] * currdur
         X = [self.state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
         ctr_sample = currdur
@@ -115,9 +118,12 @@ class HSMM:
         while ctr_sample < n_samples:
             currstate = (tmat_cdf[currstate] > rnd_checked.rand()).argmax()
             currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
-            # if with right censoring, cap the samples to n_samples
-            if censoring == 1 and (ctr_sample + currdur) > n_samples:
-                currdur = n_samples - ctr_sample
+            # test if the end of generating samples
+            if ctr_sample + currdur > n_samples:
+                if censoring == 0:
+                    break   # if without right censoring, do not include exceeding state duration
+                else:
+                    currdur = n_samples - ctr_sample   # if with right censoring, cap the samples to n_samples
             state_sequence += [currstate] * currdur
             X += [self.state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
             ctr_sample += currdur
