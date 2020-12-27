@@ -6,7 +6,7 @@ from sklearn.utils import check_array, check_random_state
 
 import hsmm_core as core
 # import hsmm_core_x as core   # use if hsmm_core_x.pyx is compiled
-from hsmm_utils import log_mask_zero
+from hsmm_utils import log_mask_zero, iter_from_X_lengths
 
 # Base Class for Explicit Duration HSMM
 class HSMM:
@@ -21,8 +21,8 @@ class HSMM:
         self.tol = tol
         self.rnd_state = rnd_state
 
-    # init: initializes model parameters if there are none yet.
-    def init(self):
+    # _init: initializes model parameters if there are none yet.
+    def _init(self):
         if not hasattr(self, "pi"):
             self.pi = np.full(self.n_states, 1.0 / self.n_states)
         if not hasattr(self, "tmat"):
@@ -30,8 +30,8 @@ class HSMM:
             for i in range(self.n_states):
                 self.tmat[i, i] = 0.0   # no self-transitions in HSMM
 
-    # check: check if properties of model parameters are satisfied
-    def check(self):
+    # _check: check if properties of model parameters are satisfied
+    def _check(self):
         # starting probabilities
         self.pi = np.asarray(self.pi)
         if self.pi.shape != (self.n_states, ):
@@ -48,17 +48,16 @@ class HSMM:
             if self.tmat[i, i] != 0.0:   # check for diagonals
                 raise ValueError("transition matrix (self.tmat) must have all diagonals equal to 0.0")
 
-    # emission_logprob: compute the log-likelihood per state of each observation
-    def emission_logprob(self):
+    # _emission_logprob: compute the log-likelihood per state of each observation
+    def _emission_logprob(self):
         """
-        arguments: (self, X, logframe)
-        return: status_code, error_info
-        > build the logframe
+        arguments: (self, X)
+        return: logframe
         """
         pass   # implemented in subclass
 
-    # emission_mstep: perform m-step for emission parameters
-    def emission_mstep(self):
+    # _emission_mstep: perform m-step for emission parameters
+    def _emission_mstep(self):
         """
         arguments: (self, X, gamma, lengths=None)
         return: None
@@ -66,17 +65,16 @@ class HSMM:
         """
         pass   # implemented in subclass
 
-    # dur_logprob: compute the log-probability per state of each duration
-    def dur_logprob(self):
+    # _dur_logprob: compute the log-probability per state of each duration
+    def _dur_logprob(self):
         """
-        arguments: (self, logdur)
-        return: status_code, error_info
-        > build the logdur
+        arguments: (self)
+        return: logdur
         """
         pass   # implemented in subclass
 
-    # dur_mstep: perform m-step for duration parameters
-    def dur_mstep(self):
+    # _dur_mstep: perform m-step for duration parameters
+    def _dur_mstep(self):
         """
         arguments: (self, new_dur)
         return: None
@@ -84,19 +82,19 @@ class HSMM:
         """
         pass   # implemented in subclass
     
-    # state_sample: generate 'observation' for given state
-    def state_sample(self):
+    # _state_sample: generate 'observation' for given state
+    def _state_sample(self):
         """
         arguments: (self, state, rnd_state=None)
-        return: np.ndarray of length self.n_dim
+        return: np.ndarray of length equal to dimension of observation
         > generate sample from state
         """
         pass   # implemented in subclass
 
     # sample: generate random observation series
-    def sample(self, n_samples, censoring=1, rnd_state=None):
-        self.init(None)   # see "note for programmers" in init() in GaussianHSMM
-        self.check()
+    def sample(self, n_samples=5, censoring=1, rnd_state=None):
+        self._init(None)   # see "note for programmers" in init() in GaussianHSMM
+        self._check()
         # setup random state
         if rnd_state is None:
             rnd_state = self.rnd_state
@@ -112,63 +110,105 @@ class HSMM:
             print("SAMPLE: n_samples is too small to contain the first state duration.")
             return None
         state_sequence = [currstate] * currdur
-        X = [self.state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
+        X = [self._state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
         ctr_sample = currdur
         # for next state transitions
         while ctr_sample < n_samples:
             currstate = (tmat_cdf[currstate] > rnd_checked.rand()).argmax()
             currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
-            # test if the end of generating samples
+            # test if now in the end of generating samples
             if ctr_sample + currdur > n_samples:
                 if censoring == 0:
                     break   # if without right censoring, do not include exceeding state duration
                 else:
                     currdur = n_samples - ctr_sample   # if with right censoring, cap the samples to n_samples
             state_sequence += [currstate] * currdur
-            X += [self.state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
+            X += [self._state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
             ctr_sample += currdur
         return ctr_sample, np.atleast_2d(X), np.array(state_sequence, dtype=int)
 
-    # score: log-likelihood computation from observation series
-    def score(self, X, lengths=None, censoring=1):
-        X = check_array(X)
-        self.init(X)
-        self.check()
-        n_samples = X.shape[0]
-        # setup required probability tables
-        logframe = np.empty((n_samples, self.n_states))
-        logdur = np.empty((self.n_states, self.n_durations))
-        beta = np.empty((n_samples, self.n_states))
-        betastar = np.empty((n_samples, self.n_states))
+    # _core_u_only: container for core._u_only (for multiple observation sequences)
+    def _core_u_only(self, logframe):
+        n_samples = logframe.shape[0]
         u = np.empty((n_samples, self.n_states, self.n_durations))
-        # main computations
-        dur_status, dur_info = self.dur_logprob(logdur)   # build logdur
-        if dur_status == -1:
-            print("SCORE: (ABORT) ", dur_info, sep="")
-            return None
-        emi_status, emi_info = self.emission_logprob(X, logframe)   # build logframe
-        if emi_status == -1:
-            print("SCORE: (ABORT) ", emi_info, sep="")
-            return None
         core._u_only(n_samples, self.n_states, self.n_durations,
                      logframe, u)
+        return u
+
+    # _core_forward: container for core._forward (for multiple observation sequences)
+    def _core_forward(self, u, logdur, censoring):
+        n_samples = u.shape[0]
+        if censoring == 0:   # without right censoring
+            eta = np.empty((n_samples, self.n_states, self.n_durations))
+        else:   # with right censoring
+            eta = np.empty((n_samples + self.n_durations - 1, self.n_states, self.n_durations))
+        xi = np.empty((n_samples, self.n_states, self.n_states))
+        core._forward(n_samples, self.n_states, self.n_durations,
+                      log_mask_zero(self.pi),
+                      log_mask_zero(self.tmat),
+                      logdur, censoring, eta, u, xi)
+        return eta, xi
+
+    # _core_backward: container for core._backward (for multiple observation sequences)
+    def _core_backward(self, u, logdur, censoring):
+        n_samples = u.shape[0]
+        beta = np.empty((n_samples, self.n_states))
+        betastar = np.empty((n_samples, self.n_states))
         core._backward(n_samples, self.n_states, self.n_durations,
                        log_mask_zero(self.pi),
                        log_mask_zero(self.tmat),
                        logdur, censoring, beta, u, betastar)
-        # compute for gamma for t = 0
-        gammazero = log_mask_zero(self.pi) + betastar[0]
-        return logsumexp(gammazero)   # the summation over states is the score
+        return beta, betastar
+    
+    # _core_viterbi: container for core._viterbi (for multiple observation sequences)
+    def _core_viterbi(self, u, logdur, censoring):
+        n_samples = u.shape[0]
+        state_sequence, log_prob = core._viterbi(n_samples, self.n_states, self.n_durations,
+                                                 log_mask_zero(self.pi),
+                                                 log_mask_zero(self.tmat),
+                                                 logdur, censoring, u)
+        return state_sequence, log_prob
+
+    # score: log-likelihood computation from observation series
+    def score(self, X, lengths=None, censoring=1):
+        X = check_array(X)
+        self._init(X)
+        self._check()
+        logdur = self._dur_logprob()   # build logdur
+        # main computations
+        log_prob = 0
+        for i, j in iter_from_X_lengths(X, lengths):
+            logframe = self._emission_logprob(X[i:j])   # build logframe
+            u = self._core_u_only(logframe)
+            _, betastar = self._core_backward(u, logdur, censoring)
+            gammazero = log_mask_zero(self.pi) + betastar[0]
+            log_prob += logsumexp(gammazero)
+        return log_prob
+
+    # predict: hidden state & duration estimation from observation series
+    def predict(self, X, lengths=None, censoring=1):
+        X = check_array(X)
+        self._init(X)
+        self._check()
+        logdur = self._dur_logprob()   # build logdur
+        # main computations
+        log_prob = 0
+        state_sequence = np.empty(X.shape[0], dtype=int)   # total n_samples = X.shape[0]
+        for i, j in iter_from_X_lengths(X, lengths):
+            logframe = self._emission_logprob(X[i:j])   # build logframe
+            u = self._core_u_only(logframe)
+            iter_state_sequence, iter_log_prob = self._core_viterbi(u, logdur, censoring)
+            log_prob += iter_log_prob
+            state_sequence[i:j] = iter_state_sequence
+        return state_sequence, log_prob
 
     # fit: parameter estimation from observation series
     def fit(self, X, lengths=None, censoring=1):
         X = check_array(X)
-        self.init(X)
-        self.check()
+        self._init(X)
+        self._check()
         n_samples = X.shape[0]
         # setup required probability tables
-        logframe = np.empty((n_samples, self.n_states))
-        logdur = np.empty((self.n_states, self.n_durations))
         beta = np.empty((n_samples, self.n_states))
         betastar = np.empty((n_samples, self.n_states))
         u = np.empty((n_samples, self.n_states, self.n_durations))
@@ -181,14 +221,8 @@ class HSMM:
         # main loop
         for itera in range(self.n_iter):
             # main computations
-            dur_status, dur_info = self.dur_logprob(logdur)   # build logdur
-            if dur_status == -1:
-                print("FIT: (ABORT) ", dur_info, sep="")
-                break
-            emi_status, emi_info = self.emission_logprob(X, logframe)   # build logframe
-            if emi_status == -1:
-                print("FIT: (ABORT) ", emi_info, sep="")
-                break
+            logdur = self._dur_logprob()   # build logdur
+            logframe = self._emission_logprob(X[i:j])   # build logframe
             core._u_only(n_samples, self.n_states, self.n_durations,
                          logframe, u)
             core._forward(n_samples, self.n_states, self.n_durations,
@@ -214,44 +248,17 @@ class HSMM:
             self.tmat = np.exp(tmat_num - logsumexp(tmat_num, axis=1)[None].T)
             dur_num = logsumexp(eta[0:n_samples], axis=0)
             new_dur = np.exp(dur_num - logsumexp(dur_num, axis=1)[None].T)
-            self.dur_mstep(new_dur)   # new durations
-            self.emission_mstep(X, gamma)   # new emissions
+            self._dur_mstep(new_dur)   # new durations
+            self._emission_mstep(X, gamma)   # new emissions
             print("FIT: reestimation complete for ", (itera + 1), "th loop.", sep="")
-
-    # predict: hidden state & duration estimation from observation series
-    def predict(self, X, lengths=None, censoring=1):
-        X = check_array(X)
-        self.init(X)
-        self.check()
-        n_samples = X.shape[0]
-        # setup required probability tables
-        logframe = np.empty((n_samples, self.n_states))
-        logdur = np.empty((self.n_states, self.n_durations))
-        u = np.empty((n_samples, self.n_states, self.n_durations))
-        # main computations
-        dur_status, dur_info = self.dur_logprob(logdur)   # build logdur
-        if dur_status == -1:
-            print("PREDICT: (ABORT) ", dur_info, sep="")
-            return None, None
-        emi_status, emi_info = self.emission_logprob(X, logframe)   # build logframe
-        if emi_status == -1:
-            print("PREDICT: (ABORT) ", emi_info, sep="")
-            return None, None
-        core._u_only(n_samples, self.n_states, self.n_durations,
-                     logframe, u)
-        state_sequence, log_prob = core._viterbi(n_samples, self.n_states, self.n_durations,
-                                                 log_mask_zero(self.pi),
-                                                 log_mask_zero(self.tmat),
-                                                 logdur, censoring, u)
-        return state_sequence, log_prob
 
 # Simple Gaussian Explicit Duration HSMM
 class GaussianHSMM(HSMM):
     def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, rnd_state=None):
         super().__init__(n_states, n_durations, n_iter, tol, rnd_state)
 
-    def init(self, X):
-        super().init()
+    def _init(self, X):
+        super()._init()
         if not hasattr(self, "dur"):
             # non-parametric duration
             self.dur = np.full((self.n_states, self.n_durations), 1.0 / self.n_durations)
@@ -277,8 +284,8 @@ class GaussianHSMM(HSMM):
                 # TODO: initial covariance matrices must be computed from X
                 self.covmat = np.repeat(np.identity(self.n_dim)[None], self.n_states, axis=0)
 
-    def check(self):
-        super().check()
+    def _check(self):
+        super()._check()
         # duration probabilities
         self.dur = np.asarray(self.dur)
         if self.dur.shape != (self.n_states, self.n_durations):
@@ -297,30 +304,31 @@ class GaussianHSMM(HSMM):
             raise ValueError("covariance matrices (self.covmat) must have shape ({0}, {1}, {1})"
                              .format(self.n_states, self.n_dim))
 
-    def dur_logprob(self, logdur):
+    def _dur_logprob(self):
         # non-parametric duration
-        logdur[:] = log_mask_zero(self.dur)
-        return 0, "OK"
+        return log_mask_zero(self.dur)
 
-    def dur_mstep(self, new_dur):
+    def _dur_mstep(self, new_dur):
         # non-parametric duration
         self.dur = new_dur
         
-    def emission_logprob(self, X, logframe):
+    def _emission_logprob(self, X):
         # status: abort EM loop if any covariance matrix is not symmetric, positive-definite.
         # adapted from hmmlearn 0.2.3 (see _utils._validate_covars function)
         for n, cv in enumerate(self.covmat):
             if (not np.allclose(cv, cv.T) or np.any(np.linalg.eigvalsh(cv) <= 0)):
-                return -1, "component {} of covariance matrix is not symmetric, positive-definite.".format(n)
+                raise ValueError("component {} of covariance matrix is not symmetric, positive-definite."
+                                 .format(n))
                 # https://www.youtube.com/watch?v=tWoFaPwbzqE&t=1694s
         n_samples = X.shape[0]
+        logframe = np.empty((n_samples, self.n_states))
         for i in range(self.n_states):
             multigauss = multivariate_normal(self.mean[i], self.covmat[i])
             for j in range(n_samples):
                 logframe[j, i] = log_mask_zero(multigauss.pdf(X[j]))
-        return 0, "OK"
+        return logframe
 
-    def emission_mstep(self, X, gamma, lengths=None):
+    def _emission_mstep(self, X, gamma, lengths=None):
         # NOTE: gamma is still in logarithm form
         denominator = logsumexp(gamma[None].T, axis=1)
         weight_normalized = np.exp(gamma[None].T - denominator[:, None])
@@ -330,6 +338,6 @@ class GaussianHSMM(HSMM):
         dist = X - self.mean[:, None]
         self.covmat = ((dist * weight_normalized)[:, :, :, None] * dist[:, :, None]).sum(1)
         
-    def state_sample(self, state, rnd_state=None):
+    def _state_sample(self, state, rnd_state=None):
         rnd_checked = check_random_state(rnd_state)
         return rnd_checked.multivariate_normal(self.mean[state], self.covmat[state])
