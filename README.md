@@ -12,18 +12,20 @@ The code style is inspired from [hmmlearn](https://github.com/hmmlearn/hmmlearn)
 I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (Python 3) on Windows (see the [notebooks](notebooks)).
 
 #### Implemented so far
-- EM Algorithm (with & without right-censoring) 
-- EDHSMM with Multivariate Gaussian emissions 
+- EM algorithm (with & without right-censoring)
 - Scoring (log-likelihood of observation under the model)
-- Viterbi Algorithm
+- Viterbi algorithm
 - Generate samples
+- Support for multivariate Gaussian emissions
+- Support for multiple observation sequences
 
 #### Sure to be implemented
 - ~~Viterbi Algorithm~~ (06-May-2020)
-- EM Algorithm with multiple observation sequences
+- ~~EM Algorithm with multiple observation sequences~~ (31-Dec-2020)
 - ~~Cythoning the core algorithms~~ (25-Jun-2020) (see the [hsmm_core_x.pyx](edhsmm/hsmm_core_x.pyx) and [setup.py](edhsmm/setup.py))
 - ~~Generate samples~~ (06-Dec-2020)
 - ~~Customizable duration distribution~~ (12-Jun-2020)
+- MultinomialHSMM (discrete emissions)
 
 #### Unsure to be implemented
 - Left-censoring (I have difficulty understanding and implementing it)
