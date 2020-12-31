@@ -4,8 +4,8 @@ from scipy.special import logsumexp
 from sklearn import cluster
 from sklearn.utils import check_array, check_random_state
 
-#import hsmm_core as core
-import hsmm_core_x as core   # use if hsmm_core_x.pyx is compiled
+import hsmm_core as core
+# import hsmm_core_x as core   # use if hsmm_core_x.pyx is compiled
 from hsmm_utils import log_mask_zero, iter_from_X_lengths
 
 # Base Class for Explicit Duration HSMM
