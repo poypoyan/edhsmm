@@ -4,8 +4,8 @@ from scipy.special import logsumexp
 from sklearn import cluster
 from sklearn.utils import check_array, check_random_state
 
-import hsmm_core as core
-# import hsmm_core_x as core   # use if hsmm_core_x.pyx is compiled
+#import hsmm_core as core
+import hsmm_core_x as core   # use if hsmm_core_x.pyx is compiled
 from hsmm_utils import log_mask_zero, iter_from_X_lengths
 
 # Base Class for Explicit Duration HSMM
@@ -48,23 +48,6 @@ class HSMM:
             if self.tmat[i, i] != 0.0:   # check for diagonals
                 raise ValueError("transition matrix (self.tmat) must have all diagonals equal to 0.0")
 
-    # _emission_logprob: compute the log-likelihood per state of each observation
-    def _emission_logprob(self):
-        """
-        arguments: (self, X)
-        return: logframe
-        """
-        pass   # implemented in subclass
-
-    # _emission_mstep: perform m-step for emission parameters
-    def _emission_mstep(self):
-        """
-        arguments: (self, X, gamma, lengths=None)
-        return: None
-        > compute the emission parameters
-        """
-        pass   # implemented in subclass
-
     # _dur_logprob: compute the log-probability per state of each duration
     def _dur_logprob(self):
         """
@@ -81,7 +64,33 @@ class HSMM:
         > compute the duration parameters
         """
         pass   # implemented in subclass
-    
+
+    # _emission_logprob: compute the log-likelihood per state of each observation
+    def _emission_logprob(self):
+        """
+        arguments: (self, X)
+        return: logframe
+        """
+        pass   # implemented in subclass
+
+    # _emission_pre_mstep: prepare m-step for emission parameters
+    def _emission_pre_mstep(self):
+        """
+        arguments: (self, gamma, emission_var)
+        return: None
+        > process gamma and save output to emission_var
+        """
+        pass   # implemented in subclass
+
+    # _emission_mstep: perform m-step for emission parameters
+    def _emission_mstep(self):
+        """
+        arguments: (self, X, emission_var)
+        return: None
+        > compute the emission parameters
+        """
+        pass   # implemented in subclass
+
     # _state_sample: generate 'observation' for given state
     def _state_sample(self):
         """
@@ -160,6 +169,14 @@ class HSMM:
                        logdur, censoring, beta, u, betastar)
         return beta, betastar
     
+    # _core_smoothed: container for core._smoothed (for multiple observation sequences)
+    def _core_smoothed(self, beta, betastar, censoring, eta, xi):
+        n_samples = beta.shape[0]
+        gamma = np.empty((n_samples, self.n_states))
+        core._smoothed(n_samples, self.n_states, self.n_durations,
+                       beta, betastar, censoring, eta, xi, gamma)
+        return gamma
+    
     # _core_viterbi: container for core._viterbi (for multiple observation sequences)
     def _core_viterbi(self, u, logdur, censoring):
         n_samples = u.shape[0]
@@ -207,50 +224,43 @@ class HSMM:
         X = check_array(X)
         self._init(X)
         self._check()
-        n_samples = X.shape[0]
-        # setup required probability tables
-        beta = np.empty((n_samples, self.n_states))
-        betastar = np.empty((n_samples, self.n_states))
-        u = np.empty((n_samples, self.n_states, self.n_durations))
-        xi = np.empty((n_samples, self.n_states, self.n_states))
-        gamma = np.empty((n_samples, self.n_states))
-        if censoring == 0:   # without right censoring
-            eta = np.empty((n_samples, self.n_states, self.n_durations))
-        else:   # with right censoring
-            eta = np.empty((n_samples + self.n_durations - 1, self.n_states, self.n_durations))
-        # main loop
+        # main computations
         for itera in range(self.n_iter):
-            # main computations
+            score = 0
+            pi_num = np.full(self.n_states, -np.inf)
+            tmat_num = dur_num = -np.inf
+            emission_var = [None]   # see "note for programmers" in _emission_pre_mstep() in GaussianHSMM
             logdur = self._dur_logprob()   # build logdur
-            logframe = self._emission_logprob(X[i:j])   # build logframe
-            core._u_only(n_samples, self.n_states, self.n_durations,
-                         logframe, u)
-            core._forward(n_samples, self.n_states, self.n_durations,
-                          log_mask_zero(self.pi),
-                          log_mask_zero(self.tmat),
-                          logdur, censoring, eta, u, xi)
-            core._backward(n_samples, self.n_states, self.n_durations,
-                           log_mask_zero(self.pi),
-                           log_mask_zero(self.tmat),
-                           logdur, censoring, beta, u, betastar)
-            core._smoothed(n_samples, self.n_states, self.n_durations,
-                           beta, betastar, censoring, eta, xi, gamma)
+            for i, j in iter_from_X_lengths(X, lengths):
+                logframe = self._emission_logprob(X[i:j])   # build logframe
+                u = self._core_u_only(logframe)
+                eta, xi = self._core_forward(u, logdur, censoring)
+                beta, betastar = self._core_backward(u, logdur, censoring)
+                gamma = self._core_smoothed(beta, betastar, censoring, eta, xi)
+                score += logsumexp(gamma[0, :])   # this is the output of 'score' function
+                # preparation for reestimation / M-step
+                # this will make fit() slower than the previous version :(
+                xi.resize(j - i + 1, self.n_states, self.n_states)
+                eta.resize(j - i + 1, self.n_states, self.n_durations)
+                xi[j - i] = tmat_num
+                eta[j - i] = dur_num
+                pi_num = logsumexp([pi_num, gamma[0]], axis=0)
+                tmat_num = logsumexp(xi, axis=0)
+                dur_num = logsumexp(eta, axis=0)
+                self._emission_pre_mstep(gamma, emission_var)
             # check for loop break
-            score = logsumexp(gamma[0, :])   # this is the output of 'score' function
             if itera > 0 and (score - old_score) < self.tol:
-                print("FIT: converged at ", (itera + 1), "th loop.", sep="")
+                print("FIT: converged at {}th loop.".format(itera + 1))
                 break
             else:
                 old_score = score
             # reestimation / M-step
-            self.pi = np.exp(gamma[0] - logsumexp(gamma[0]))
-            tmat_num = logsumexp(xi, axis=0)
+            self.pi = np.exp(pi_num - logsumexp(pi_num))
             self.tmat = np.exp(tmat_num - logsumexp(tmat_num, axis=1)[None].T)
-            dur_num = logsumexp(eta[0:n_samples], axis=0)
             new_dur = np.exp(dur_num - logsumexp(dur_num, axis=1)[None].T)
             self._dur_mstep(new_dur)   # new durations
-            self._emission_mstep(X, gamma)   # new emissions
-            print("FIT: reestimation complete for ", (itera + 1), "th loop.", sep="")
+            self._emission_mstep(X, emission_var[0])   # new emissions
+            print("FIT: reestimation complete for {}th loop.".format(itera + 1))
 
 # Simple Gaussian Explicit Duration HSMM
 class GaussianHSMM(HSMM):
@@ -265,7 +275,7 @@ class GaussianHSMM(HSMM):
         # note for programmers: for every attribute that needs X in score()/predict()/fit(),
         # there must be a condition 'if X is None' because sample() doesn't need an X, but
         # default attribute values must be initiated for sample() to proceed.
-        if not hasattr(self, "n_dim"):
+        if True:   # always change self.n_dim
             if X is None:   # default for sample()
                 self.n_dim = 1
             else:
@@ -313,7 +323,7 @@ class GaussianHSMM(HSMM):
         self.dur = new_dur
         
     def _emission_logprob(self, X):
-        # status: abort EM loop if any covariance matrix is not symmetric, positive-definite.
+        # abort EM loop if any covariance matrix is not symmetric, positive-definite.
         # adapted from hmmlearn 0.2.3 (see _utils._validate_covars function)
         for n, cv in enumerate(self.covmat):
             if (not np.allclose(cv, cv.T) or np.any(np.linalg.eigvalsh(cv) <= 0)):
@@ -327,11 +337,21 @@ class GaussianHSMM(HSMM):
             for j in range(n_samples):
                 logframe[j, i] = log_mask_zero(multigauss.pdf(X[j]))
         return logframe
+    
+    def _emission_pre_mstep(self, gamma, emission_var):
+        # note for programmers: refer to "emission_var" as emission_var[0] here. I think this
+        # is unidiomatic, but this is done to force pass-by-reference to the np.ndarray.
+        if emission_var[0] is None:   # initial
+            emission_var[0] = gamma
+        else:
+            old_emitlength = emission_var[0].shape[0]
+            emission_var[0].resize(old_emitlength + gamma.shape[0], self.n_states)
+            emission_var[0][old_emitlength:] = gamma
 
-    def _emission_mstep(self, X, gamma, lengths=None):
-        # NOTE: gamma is still in logarithm form
-        denominator = logsumexp(gamma[None].T, axis=1)
-        weight_normalized = np.exp(gamma[None].T - denominator[:, None])
+    def _emission_mstep(self, X, emission_var):
+        # note for programmers: now refer to "emission_var" as it is, here.
+        denominator = logsumexp(emission_var, axis=0)
+        weight_normalized = np.exp(emission_var - denominator)[None].T
         # compute means (from definition; weighted)
         self.mean = (weight_normalized * X).sum(1)
         # compute covariance matrices (from definition; weighted)
