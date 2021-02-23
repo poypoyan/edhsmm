@@ -21,14 +21,15 @@ class HSMM:
         self.tol = tol
         self.rnd_state = rnd_state
 
-    # _init: initializes model parameters if there are none yet.
+    # _init: initializes model parameters if there are none yet
     def _init(self):
         if not hasattr(self, "pi"):
             self.pi = np.full(self.n_states, 1.0 / self.n_states)
         if not hasattr(self, "tmat"):
             self.tmat = np.full((self.n_states, self.n_states), 1.0 / (self.n_states - 1))
             for i in range(self.n_states):
-                self.tmat[i, i] = 0.0   # no self-transitions in HSMM
+                self.tmat[i, i] = 0.0   # no self-transitions in EDHSMM
+        self._dur_init()   # duration
 
     # _check: check if properties of model parameters are satisfied
     def _check(self):
@@ -47,12 +48,32 @@ class HSMM:
         for i in range(self.n_states):
             if self.tmat[i, i] != 0.0:   # check for diagonals
                 raise ValueError("transition matrix (self.tmat) must have all diagonals equal to 0.0")
+        # duration probabilities
+        self._dur_check()
 
-    # _dur_logprob: compute the log-probability per state of each duration
-    def _dur_logprob(self):
+    # _dur_init: initializes duration parameters if there are none yet
+    def _dur_init(self):
         """
         arguments: (self)
-        return: logdur
+        return: None
+        > initialize the duration parameters
+        """
+        pass   # implemented in subclass
+    
+    # _dur_check: checks if properties of duration parameters are satisfied
+    def _dur_check(self):
+        """
+        arguments: (self)
+        return: None
+        > check the duration parameters
+        """
+        pass   # implemented in subclass
+        
+    # _dur_probmat: compute the probability per state of each duration
+    def _dur_probmat(self):
+        """
+        arguments: (self)
+        return: duration probability matrix
         """
         pass   # implemented in subclass
 
@@ -111,7 +132,7 @@ class HSMM:
         # adapted from hmmlearn 0.2.3 (see _BaseHMM.score function)
         pi_cdf = np.cumsum(self.pi)
         tmat_cdf = np.cumsum(self.tmat, axis=1)
-        dur_cdf = np.cumsum(self.dur, axis=1)
+        dur_cdf = np.cumsum(self._dur_probmat(), axis=1)
         # for first state
         currstate = (pi_cdf > rnd_checked.rand()).argmax()   # argmax() returns only the first occurrence
         currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
@@ -191,7 +212,7 @@ class HSMM:
         X = check_array(X)
         self._init(X)
         self._check()
-        logdur = self._dur_logprob()   # build logdur
+        logdur = log_mask_zero(self._dur_probmat())   # build logdur
         # main computations
         log_prob = 0
         for i, j in iter_from_X_lengths(X, lengths):
@@ -207,7 +228,7 @@ class HSMM:
         X = check_array(X)
         self._init(X)
         self._check()
-        logdur = self._dur_logprob()   # build logdur
+        logdur = log_mask_zero(self._dur_probmat())   # build logdur
         # main computations
         log_prob = 0
         state_sequence = np.empty(X.shape[0], dtype=int)   # total n_samples = X.shape[0]
@@ -230,7 +251,7 @@ class HSMM:
             pi_num = np.full(self.n_states, -np.inf)
             tmat_num = dur_num = -np.inf
             emission_var = [None]   # see "note for programmers" in _emission_pre_mstep() in GaussianHSMM
-            logdur = self._dur_logprob()   # build logdur
+            logdur = log_mask_zero(self._dur_probmat())   # build logdur
             for i, j in iter_from_X_lengths(X, lengths):
                 logframe = self._emission_logprob(X[i:j])   # build logframe
                 u = self._core_u_only(logframe)
@@ -262,16 +283,13 @@ class HSMM:
             self._emission_mstep(X, emission_var[0])   # new emissions
             print("FIT: reestimation complete for {}th loop.".format(itera + 1))
 
-# Simple Gaussian Explicit Duration HSMM
+# Sample Subclass: Explicit Duration HSMM with Gaussian Emissions
 class GaussianHSMM(HSMM):
     def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, rnd_state=None):
         super().__init__(n_states, n_durations, n_iter, tol, rnd_state)
 
     def _init(self, X):
         super()._init()
-        if not hasattr(self, "dur"):
-            # non-parametric duration
-            self.dur = np.full((self.n_states, self.n_durations), 1.0 / self.n_durations)
         # note for programmers: for every attribute that needs X in score()/predict()/fit(),
         # there must be a condition 'if X is None' because sample() doesn't need an X, but
         # default attribute values must be initiated for sample() to proceed.
@@ -296,13 +314,6 @@ class GaussianHSMM(HSMM):
 
     def _check(self):
         super()._check()
-        # duration probabilities
-        self.dur = np.asarray(self.dur)
-        if self.dur.shape != (self.n_states, self.n_durations):
-            raise ValueError("duration probabilities (self.dur) must have shape ({}, {})"
-                             .format(self.n_states, self.n_durations))
-        if not np.allclose(self.dur.sum(axis=1), 1.0):
-            raise ValueError("duration probabilities (self.dur) must add up to 1.0")
         # means
         self.mean = np.asarray(self.mean)
         if self.mean.shape != (self.n_states, self.n_dim):
@@ -314,9 +325,22 @@ class GaussianHSMM(HSMM):
             raise ValueError("covariance matrices (self.covmat) must have shape ({0}, {1}, {1})"
                              .format(self.n_states, self.n_dim))
 
-    def _dur_logprob(self):
+    def _dur_init(self):
         # non-parametric duration
-        return log_mask_zero(self.dur)
+        if not hasattr(self, "dur"):
+            self.dur = np.full((self.n_states, self.n_durations), 1.0 / self.n_durations)
+
+    def _dur_check(self):
+        self.dur = np.asarray(self.dur)
+        if self.dur.shape != (self.n_states, self.n_durations):
+            raise ValueError("duration probabilities (self.dur) must have shape ({}, {})"
+                             .format(self.n_states, self.n_durations))
+        if not np.allclose(self.dur.sum(axis=1), 1.0):
+            raise ValueError("duration probabilities (self.dur) must add up to 1.0")
+
+    def _dur_probmat(self):
+        # non-parametric duration
+        return self.dur
 
     def _dur_mstep(self, new_dur):
         # non-parametric duration
