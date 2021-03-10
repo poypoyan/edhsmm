@@ -363,8 +363,10 @@ class GaussianHSMM(HSMM):
         return logframe
     
     def _emission_pre_mstep(self, gamma, emission_var):
-        # note for programmers: refer to "emission_var" as emission_var[0] here. I think this
+        # note for programmers: refer to "emission_var" as emission_var[0] here. Maybe this
         # is unidiomatic, but this is done to force pass-by-reference to the np.ndarray.
+        # note #2: The "emssion_var" here is the cumulative concatenation of the gammas of each
+        # observation sequences, so most likely you wouldn't modify this for your own subclass.
         if emission_var[0] is None:   # initial
             emission_var[0] = gamma
         else:
