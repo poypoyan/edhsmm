@@ -9,7 +9,7 @@ The EM algorithm is based on [Yu (2010)](https://www.sciencedirect.com/science/a
 
 The code style is inspired from [hmmlearn](https://github.com/hmmlearn/hmmlearn) and [jvkersch/hsmmlearn](https://github.com/jvkersch/hsmmlearn).
 
-I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (Python 3) on Windows (see the [notebooks](notebooks)).
+I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (Python 3) on Windows. I need testing for other platforms.
 
 #### Implemented so far
 - EM algorithm (with & without right-censoring)
@@ -18,6 +18,7 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 - Generate samples
 - Support for multivariate Gaussian emissions
 - Support for multiple observation sequences
+- Support for multinomial (discrete) emissions
 
 #### Sure to be implemented
 - ~~Viterbi Algorithm~~ (06-May-2020)
@@ -25,9 +26,12 @@ I implemented this on [Anaconda](https://www.anaconda.com/products/individual) (
 - ~~Cythoning the core algorithms~~ (25-Jun-2020) (see the [hsmm_core_x.pyx](edhsmm/hsmm_core_x.pyx) and [setup.py](edhsmm/setup.py))
 - ~~Generate samples~~ (06-Dec-2020)
 - ~~Customizable duration distribution~~ (12-Jun-2020)
-- MultinomialHSMM (discrete emissions)
+- ~~MultinomialHSMM (discrete emissions)~~ (23-Mar-2021)
 
 #### Unsure to be implemented
 - Left-censoring (I have difficulty understanding and implementing it)
 
- Found a bug? Suggest a feature? Please post on [issues](https://github.com/poypoyan/edhmm/issues). 😊
+#### Installation & Tutorial
+For now, there is no installation; you need to download the ZIP for this repository. For tutorial, see the [notebooks](notebooks).
+
+Found a bug? Suggest a feature? Please post on [issues](https://github.com/poypoyan/edhmm/issues). 😊
