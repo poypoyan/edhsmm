@@ -301,7 +301,7 @@ class GaussianHSMM(HSMM):
         if not hasattr(self, "mean"):
             if X is None:   # default for sample()
                 # self.mean = [[0.], [1.], [2.], ...]
-                self.mean = np.arange(0., self.n_states).reshape(self.n_states, self.n_dim)
+                self.mean = np.arange(0., self.n_states)[:, None]
             else:
                 kmeans = cluster.KMeans(n_clusters=self.n_states, random_state=self.rnd_state)
                 kmeans.fit(X)

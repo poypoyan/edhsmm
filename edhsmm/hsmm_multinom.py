@@ -24,7 +24,7 @@ class MultinomialHSMM(HSMM):
             # like in hmmlearn, whether with X or not, default self.emit would be random
             rnd_checked = check_random_state(self.rnd_state)
             init_emit = rnd_checked.rand(self.n_states, self.n_symbols)
-            # normalize probabilities to 1, and make sure we don't divide by zero
+            # normalize probabilities, and make sure we don't divide by zero
             init_sum = init_emit.sum(1)
             zero_sums = (init_sum == 0)   # which rows are all zeros?
             init_emit[zero_sums] = 1   # set all rows with all zeros to all ones
