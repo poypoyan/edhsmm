@@ -21,11 +21,15 @@ class MultinomialHSMM(HSMM):
             else:
                 self.n_symbols = np.max(X) + 1
         if not hasattr(self, "emit"):
-            if X is None:   # default for sample()
-                self.emit = np.full((self.n_states, self.n_symbols), 1.0 / self.n_symbols)
-            else:
-                # TODO: initial emissions must be computed from X
-                self.emit = np.full((self.n_states, self.n_symbols), 1.0 / self.n_symbols)
+            # like in hmmlearn, whether with X or not, default self.emit would be random
+            rnd_checked = check_random_state(self.rnd_state)
+            init_emit = rnd_checked.rand(self.n_states, self.n_symbols)
+            # normalize probabilities to 1, and make sure we don't divide by zero
+            init_sum = init_emit.sum(1)
+            zero_sums = (init_sum == 0)   # which rows are all zeros?
+            init_emit[zero_sums] = 1   # set all rows with all zeros to all ones
+            init_sum[zero_sums] = self.n_symbols
+            self.emit = init_emit / init_sum[None].T
 
     def _check(self):
         super()._check()
@@ -34,6 +38,8 @@ class MultinomialHSMM(HSMM):
         if self.emit.shape != (self.n_states, self.n_symbols):
             raise ValueError("emission probabilities (self.emit) must have shape ({}, {})"
                              .format(self.n_states, self.n_symbols))
+        if not np.allclose(self.emit.sum(axis=1), 1.0):
+            raise ValueError("emission probabilities (self.emit) must add up to 1.0")
 
     def _dur_init(self):
         # non-parametric duration
@@ -57,13 +63,13 @@ class MultinomialHSMM(HSMM):
         self.dur = new_dur
         
     def _emission_logprob(self, X):
-        return log_mask_zero(self.emit[:, X].T)
+        return log_mask_zero(self.emit[:, np.concatenate(X)].T)
     
     def _emission_pre_mstep(self, gamma, emission_var):
         # note for programmers: refer to "emission_var" as emission_var[0] here. Maybe this
         # is unidiomatic, but this is done to force pass-by-reference to the np.ndarray.
         # note #2: The "emssion_var" here is the cumulative concatenation of the gammas of each
-        # observation sequences, so most likely you wouldn't modify this for your own subclass.
+        # observation sequence, so most likely you wouldn't modify this for your own subclass.
         if emission_var[0] is None:   # initial
             emission_var[0] = gamma
         else:
@@ -75,12 +81,10 @@ class MultinomialHSMM(HSMM):
         # note for programmers: now refer to "emission_var" as it is, here.
         denominator = logsumexp(emission_var, axis=0)
         weight_normalized = np.exp(emission_var - denominator)
-        iverson = np.empty(self.n_symbols, emission_var.shape[0])
-        for i in range(self.n_symbols):
-            iverson[i] = (X == i)   # iverson bracket
+        iverson = (X.T == np.arange(self.n_symbols)[:,None])   # iverson bracket
         self.emit = (weight_normalized[:,:,None] * iverson[:,None].T).sum(0)
  
     def _state_sample(self, state, rnd_state=None):
         emit_cdf = np.cumsum(self.emit[state, :])
         rnd_checked = check_random_state(rnd_state)
-        return (emit_cdf > rnd_checked.rand()).argmax()
+        return [(emit_cdf > rnd_checked.rand()).argmax()]   # shape of X must be (n_samples, 1)

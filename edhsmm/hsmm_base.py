@@ -300,7 +300,8 @@ class GaussianHSMM(HSMM):
                 self.n_dim = X.shape[1]
         if not hasattr(self, "mean"):
             if X is None:   # default for sample()
-                self.mean = np.full((self.n_states, self.n_dim), 0.0)
+                # self.mean = [[0.], [1.], [2.], ...]
+                self.mean = np.arange(0., self.n_states).reshape(self.n_states, self.n_dim)
             else:
                 kmeans = cluster.KMeans(n_clusters=self.n_states, random_state=self.rnd_state)
                 kmeans.fit(X)
@@ -366,7 +367,7 @@ class GaussianHSMM(HSMM):
         # note for programmers: refer to "emission_var" as emission_var[0] here. Maybe this
         # is unidiomatic, but this is done to force pass-by-reference to the np.ndarray.
         # note #2: The "emssion_var" here is the cumulative concatenation of the gammas of each
-        # observation sequences, so most likely you wouldn't modify this for your own subclass.
+        # observation sequence, so most likely you wouldn't modify this for your own subclass.
         if emission_var[0] is None:   # initial
             emission_var[0] = gamma
         else:
