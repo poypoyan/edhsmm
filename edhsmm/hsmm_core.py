@@ -1,8 +1,6 @@
 # HSMM (Explicit Duration HMM) Core Algorithms
-# This is inspired from "_hmmc.pyx" from hmmlearn package.
-# Hence, this is easily convertible to cython (with nogil).
-# For cython, auxiliary functions (e.g. argmax, logsumexp,
-# etc.) should be implemented like in "_hmmc.pyx".
+# Consider this the prototype for "hsmm_core_x.pyx",
+# which is the Cython version.
 
 import numpy as np
 from scipy.special import logsumexp

@@ -2,8 +2,9 @@ import numpy as np
 from scipy.special import logsumexp
 from sklearn.utils import check_random_state
 
-from hsmm_base import HSMM
-from hsmm_utils import log_mask_zero
+from . import hsmm_base, hsmm_utils
+from .hsmm_base import HSMM
+from .hsmm_utils import log_mask_zero
 
 # Explicit Duration HSMM with Multinomial (Discrete) Emissions
 class MultinomialHSMM(HSMM):
