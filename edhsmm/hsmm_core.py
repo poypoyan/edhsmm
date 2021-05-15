@@ -1,5 +1,5 @@
 # HSMM (Explicit Duration HMM) Core Algorithms
-# Consider this the prototype for "hsmm_core_x.pyx",
+# Consider this as the prototype for "hsmm_core_x.pyx",
 # which is the Cython version.
 
 import numpy as np
