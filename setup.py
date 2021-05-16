@@ -9,7 +9,9 @@ setup(
     version="0.1.0",
     description="An(other) implementation of Explicit Duration HMM/HSMM in Python 3",
     long_description=open("README.md", encoding="utf-8").read(),
-    maintainer="poypoyan",
+    long_description_content_type="text/markdown",
+    author="poypoyan",
+    author_email="srazin123@gmail.com",
     url="https://github.com/poypoyan/edhsmm",
     license="MIT",
     classifiers=[
@@ -27,7 +29,6 @@ setup(
     ext_modules=cythonize("edhsmm/hsmm_core_x.pyx",
                 include_path = [numpy.get_include()]),
     python_requires=">=3.5",   # compatibility with hmmlearn
-    setup_requires=["Cython", "numpy>=1.10"],   # compatibility with hmmlearn
     install_requires=[
         "numpy>=1.10",   # compatibility with hmmlearn
         "scikit-learn>=0.16",   # sklearn.utils.check_array
