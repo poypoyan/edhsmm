@@ -1,0 +1,1 @@
+include edhsmm/hsmm_core_x.pyx
