@@ -62,29 +62,16 @@ class MultinomialHSMM(HSMM):
     def _dur_mstep(self, new_dur):
         # non-parametric duration
         self.dur = new_dur
-        
+
     def _emission_logprob(self, X):
         return log_mask_zero(self.emit[:, np.concatenate(X)].T)
-    
-    def _emission_pre_mstep(self, gamma, emission_var):
-        # note for programmers: refer to "emission_var" as emission_var[0] here. Maybe this
-        # is unidiomatic, but this is done to force pass-by-reference to the np.ndarray.
-        # note #2: The "emssion_var" here is the cumulative concatenation of the gammas of each
-        # observation sequence, so most likely you wouldn't modify this for your own subclass.
-        if emission_var[0] is None:   # initial
-            emission_var[0] = gamma
-        else:
-            old_emitlength = emission_var[0].shape[0]
-            emission_var[0].resize(old_emitlength + gamma.shape[0], self.n_states)
-            emission_var[0][old_emitlength:] = gamma
 
     def _emission_mstep(self, X, emission_var):
-        # note for programmers: now refer to "emission_var" as it is, here.
         denominator = logsumexp(emission_var, axis=0)
         weight_normalized = np.exp(emission_var - denominator)
         iverson = (X.T == np.arange(self.n_symbols)[:,None])   # iverson bracket
         self.emit = (weight_normalized[:,:,None] * iverson[:,None].T).sum(0)
- 
+
     def _state_sample(self, state, rnd_state=None):
         emit_cdf = np.cumsum(self.emit[state, :])
         rnd_checked = check_random_state(rnd_state)

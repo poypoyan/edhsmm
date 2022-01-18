@@ -6,7 +6,7 @@ import numpy
 
 setup(
     name="edhsmm",
-    version="0.1.2",
+    version="0.1.3",
     description="An(other) implementation of Explicit Duration HMM/HSMM in Python 3",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -22,7 +22,6 @@ setup(
         "Topic :: Software Development",
         "Topic :: Scientific/Engineering",
         "Programming Language :: Cython",
-        "Programming Language :: Python",
         "Programming Language :: Python :: 3",
     ],
     packages=["edhsmm"],

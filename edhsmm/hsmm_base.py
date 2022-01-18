@@ -58,7 +58,7 @@ class HSMM:
         > initialize the duration parameters
         """
         pass   # implemented in subclass
-    
+
     # _dur_check: checks if properties of duration parameters are satisfied
     def _dur_check(self):
         """
@@ -67,7 +67,7 @@ class HSMM:
         > check the duration parameters
         """
         pass   # implemented in subclass
-        
+
     # _dur_probmat: compute the probability per state of each duration
     def _dur_probmat(self):
         """
@@ -168,10 +168,10 @@ class HSMM:
     def _core_forward(self, u, logdur, censoring):
         n_samples = u.shape[0]
         if censoring == 0:   # without right censoring
-            eta = np.empty((n_samples, self.n_states, self.n_durations))
+            eta = np.empty((n_samples + 1, self.n_states, self.n_durations))   # +1
         else:   # with right censoring
-            eta = np.empty((n_samples + self.n_durations - 1, self.n_states, self.n_durations))
-        xi = np.empty((n_samples, self.n_states, self.n_states))
+            eta = np.empty((n_samples + self.n_durations, self.n_states, self.n_durations))   # +1
+        xi = np.empty((n_samples + 1, self.n_states, self.n_states))   # +1
         core._forward(n_samples, self.n_states, self.n_durations,
                       log_mask_zero(self.pi),
                       log_mask_zero(self.tmat),
@@ -188,7 +188,7 @@ class HSMM:
                        log_mask_zero(self.tmat),
                        logdur, censoring, beta, u, betastar)
         return beta, betastar
-    
+
     # _core_smoothed: container for core._smoothed (for multiple observation sequences)
     def _core_smoothed(self, beta, betastar, censoring, eta, xi):
         n_samples = beta.shape[0]
@@ -196,7 +196,7 @@ class HSMM:
         core._smoothed(n_samples, self.n_states, self.n_durations,
                        beta, betastar, censoring, eta, xi, gamma)
         return gamma
-    
+
     # _core_viterbi: container for core._viterbi (for multiple observation sequences)
     def _core_viterbi(self, u, logdur, censoring):
         n_samples = u.shape[0]
@@ -249,7 +249,7 @@ class HSMM:
             score = 0
             pi_num = np.full(self.n_states, -np.inf)
             tmat_num = dur_num = -np.inf
-            emission_var = [None]   # see "note for programmers" in _emission_pre_mstep() in GaussianHSMM
+            emission_var = np.empty((X.shape[0], self.n_states))   # cumulative concatenation of gammas
             logdur = log_mask_zero(self._dur_probmat())   # build logdur
             for i, j in iter_from_X_lengths(X, lengths):
                 logframe = self._emission_logprob(X[i:j])   # build logframe
@@ -259,18 +259,17 @@ class HSMM:
                 gamma = self._core_smoothed(beta, betastar, censoring, eta, xi)
                 score += logsumexp(gamma[0, :])   # this is the output of 'score' function
                 # preparation for reestimation / M-step
-                # this will make fit() slower than the previous version :(
-                xi.resize(j - i + 1, self.n_states, self.n_states)
-                eta.resize(j - i + 1, self.n_states, self.n_durations)
+                if eta.shape[0] != j - i + 1:
+                    eta = eta[:j - i + 1]
                 xi[j - i] = tmat_num
                 eta[j - i] = dur_num
                 pi_num = logsumexp([pi_num, gamma[0]], axis=0)
                 tmat_num = logsumexp(xi, axis=0)
                 dur_num = logsumexp(eta, axis=0)
-                self._emission_pre_mstep(gamma, emission_var)
+                emission_var[i:j] = gamma
             # check for loop break
             if itera > 0 and (score - old_score) < self.tol:
-                print("FIT: converged at {}th loop.".format(itera + 1))
+                print("FIT: converged at loop {}.".format(itera + 1))
                 break
             else:
                 old_score = score
@@ -279,8 +278,8 @@ class HSMM:
             self.tmat = np.exp(tmat_num - logsumexp(tmat_num, axis=1)[None].T)
             new_dur = np.exp(dur_num - logsumexp(dur_num, axis=1)[None].T)
             self._dur_mstep(new_dur)   # new durations
-            self._emission_mstep(X, emission_var[0])   # new emissions
-            print("FIT: reestimation complete for {}th loop.".format(itera + 1))
+            self._emission_mstep(X, emission_var)   # new emissions
+            print("FIT: reestimation complete for loop {}.".format(itera + 1))
 
 # Sample Subclass: Explicit Duration HSMM with Gaussian Emissions
 class GaussianHSMM(HSMM):
@@ -345,7 +344,7 @@ class GaussianHSMM(HSMM):
     def _dur_mstep(self, new_dur):
         # non-parametric duration
         self.dur = new_dur
-        
+
     def _emission_logprob(self, X):
         # abort EM loop if any covariance matrix is not symmetric, positive-definite.
         # adapted from hmmlearn 0.2.3 (see _utils._validate_covars function)
@@ -361,21 +360,8 @@ class GaussianHSMM(HSMM):
             for j in range(n_samples):
                 logframe[j, i] = log_mask_zero(multigauss.pdf(X[j]))
         return logframe
-    
-    def _emission_pre_mstep(self, gamma, emission_var):
-        # note for programmers: refer to "emission_var" as emission_var[0] here. Maybe this
-        # is unidiomatic, but this is done to force pass-by-reference to the np.ndarray.
-        # note #2: The "emssion_var" here is the cumulative concatenation of the gammas of each
-        # observation sequence, so most likely you wouldn't modify this for your own subclass.
-        if emission_var[0] is None:   # initial
-            emission_var[0] = gamma
-        else:
-            old_emitlength = emission_var[0].shape[0]
-            emission_var[0].resize(old_emitlength + gamma.shape[0], self.n_states)
-            emission_var[0][old_emitlength:] = gamma
 
     def _emission_mstep(self, X, emission_var):
-        # note for programmers: now refer to "emission_var" as it is, here.
         denominator = logsumexp(emission_var, axis=0)
         weight_normalized = np.exp(emission_var - denominator)[None].T
         # compute means (from definition; weighted)
@@ -383,7 +369,7 @@ class GaussianHSMM(HSMM):
         # compute covariance matrices (from definition; weighted)
         dist = X - self.mean[:, None]
         self.covmat = ((dist * weight_normalized)[:, :, :, None] * dist[:, :, None]).sum(1)
-        
+
     def _state_sample(self, state, rnd_state=None):
         rnd_checked = check_random_state(rnd_state)
         return rnd_checked.multivariate_normal(self.mean[state], self.covmat[state])

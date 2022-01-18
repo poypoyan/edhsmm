@@ -9,8 +9,8 @@ def iter_from_X_lengths(X, lengths):
         n_samples = X.shape[0]
         end = np.cumsum(lengths).astype(np.int32)
         start = end - lengths
-        if end[-1] > n_samples:
-            raise ValueError("more than {:d} samples in lengths array {!s}"
+        if end[-1] != n_samples:
+            raise ValueError("{:d} samples do not match lengths array {!s}"
                              .format(n_samples, lengths))
 
         for i in range(len(lengths)):

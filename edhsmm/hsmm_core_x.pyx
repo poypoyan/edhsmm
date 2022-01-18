@@ -51,7 +51,7 @@ cdef inline dtype_t _logaddexp(dtype_t a, dtype_t b) nogil:
 def _u_only(int n_samples, int n_states, int n_durations,
             dtype_t[:, :] log_obsprob, dtype_t[:, :, :] u):
     cdef int t, j, d
-    
+
     with nogil:
         for t in range(n_samples):
             for j in range(n_states):
@@ -196,7 +196,7 @@ def _viterbi(int n_samples, int n_states, int n_durations,
     cdef dtype_t[::1] buffer1 = np.empty(n_durations)
     cdef int[::1] buffer1_state = np.empty(n_durations, dtype=np.int32)
     cdef int[::1] state_sequence = np.empty(n_samples, dtype=np.int32)
-    
+
     with nogil:
         # forward pass
         for t in range(t_iter):
@@ -243,5 +243,5 @@ def _viterbi(int n_samples, int n_states, int n_durations,
                 back_t = t
             state_sequence[t] = back_state
             back_dur -= 1
-    
+
     return state_sequence, log_prob

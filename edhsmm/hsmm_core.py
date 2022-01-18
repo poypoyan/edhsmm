@@ -196,5 +196,5 @@ def _viterbi(n_samples, n_states, n_durations,
             back_t = t
         state_sequence[t] = back_state
         back_dur -= 1
-    
+
     return state_sequence, log_prob
