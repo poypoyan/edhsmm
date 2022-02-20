@@ -121,7 +121,7 @@ class HSMM:
         pass   # implemented in subclass
 
     # sample: generate random observation series
-    def sample(self, n_samples=5, censoring=1, rnd_state=None):
+    def sample(self, n_samples=5, left_censor=1, right_censor=1, rnd_state=None):
         self._init(None)   # see "note for programmers" in init() in GaussianHSMM
         self._check()
         # setup random state
@@ -135,7 +135,8 @@ class HSMM:
         # for first state
         currstate = (pi_cdf > rnd_checked.rand()).argmax()   # argmax() returns only the first occurrence
         currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
-        if censoring == 0 and currdur > n_samples:
+        # TODO: left_censor
+        if right_censor == 0 and currdur > n_samples:
             print("SAMPLE: n_samples is too small to contain the first state duration.")
             return None
         state_sequence = [currstate] * currdur
@@ -147,10 +148,10 @@ class HSMM:
             currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
             # test if now in the end of generating samples
             if ctr_sample + currdur > n_samples:
-                if censoring == 0:
-                    break   # if without right censoring, do not include exceeding state duration
+                if right_censor != 0:
+                    currdur = n_samples - ctr_sample   # if with right censor, cap the samples to n_samples
                 else:
-                    currdur = n_samples - ctr_sample   # if with right censoring, cap the samples to n_samples
+                    break   # else, do not include exceeding state duration
             state_sequence += [currstate] * currdur
             X += [self._state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
             ctr_sample += currdur
@@ -165,49 +166,51 @@ class HSMM:
         return u
 
     # _core_forward: container for core._forward (for multiple observation sequences)
-    def _core_forward(self, u, logdur, censoring):
+    def _core_forward(self, u, logdur, left_censor, right_censor):
         n_samples = u.shape[0]
-        if censoring == 0:   # without right censoring
-            eta = np.empty((n_samples + 1, self.n_states, self.n_durations))   # +1
-        else:   # with right censoring
-            eta = np.empty((n_samples + self.n_durations, self.n_states, self.n_durations))   # +1
+        # TODO: left_censor
+        if right_censor != 0:
+            eta_samples = n_samples + self.n_durations - 1
+        else:
+            eta_samples = n_samples
+        eta = np.empty((eta_samples + 1, self.n_states, self.n_durations))   # +1
         xi = np.empty((n_samples + 1, self.n_states, self.n_states))   # +1
         core._forward(n_samples, self.n_states, self.n_durations,
                       log_mask_zero(self.pi),
                       log_mask_zero(self.tmat),
-                      logdur, censoring, eta, u, xi)
+                      logdur, left_censor, right_censor, eta, u, xi)
         return eta, xi
 
     # _core_backward: container for core._backward (for multiple observation sequences)
-    def _core_backward(self, u, logdur, censoring):
+    def _core_backward(self, u, logdur, left_censor, right_censor):
         n_samples = u.shape[0]
         beta = np.empty((n_samples, self.n_states))
         betastar = np.empty((n_samples, self.n_states))
         core._backward(n_samples, self.n_states, self.n_durations,
                        log_mask_zero(self.pi),
                        log_mask_zero(self.tmat),
-                       logdur, censoring, beta, u, betastar)
+                       logdur, left_censor, right_censor, beta, u, betastar)
         return beta, betastar
 
     # _core_smoothed: container for core._smoothed (for multiple observation sequences)
-    def _core_smoothed(self, beta, betastar, censoring, eta, xi):
+    def _core_smoothed(self, beta, betastar, left_censor, right_censor, eta, xi):
         n_samples = beta.shape[0]
         gamma = np.empty((n_samples, self.n_states))
         core._smoothed(n_samples, self.n_states, self.n_durations,
-                       beta, betastar, censoring, eta, xi, gamma)
+                       beta, betastar, left_censor, right_censor, eta, xi, gamma)
         return gamma
 
     # _core_viterbi: container for core._viterbi (for multiple observation sequences)
-    def _core_viterbi(self, u, logdur, censoring):
+    def _core_viterbi(self, u, logdur, left_censor, right_censor):
         n_samples = u.shape[0]
         state_sequence, log_prob = core._viterbi(n_samples, self.n_states, self.n_durations,
                                                  log_mask_zero(self.pi),
                                                  log_mask_zero(self.tmat),
-                                                 logdur, censoring, u)
+                                                 logdur, left_censor, right_censor, u)
         return state_sequence, log_prob
 
     # score: log-likelihood computation from observation series
-    def score(self, X, lengths=None, censoring=1):
+    def score(self, X, lengths=None, left_censor=1, right_censor=1):
         X = check_array(X)
         self._init(X)
         self._check()
@@ -217,13 +220,13 @@ class HSMM:
         for i, j in iter_from_X_lengths(X, lengths):
             logframe = self._emission_logprob(X[i:j])   # build logframe
             u = self._core_u_only(logframe)
-            _, betastar = self._core_backward(u, logdur, censoring)
+            _, betastar = self._core_backward(u, logdur, left_censor, right_censor)
             gammazero = log_mask_zero(self.pi) + betastar[0]
             log_prob += logsumexp(gammazero)
         return log_prob
 
     # predict: hidden state & duration estimation from observation series
-    def predict(self, X, lengths=None, censoring=1):
+    def predict(self, X, lengths=None, left_censor=1, right_censor=1):
         X = check_array(X)
         self._init(X)
         self._check()
@@ -234,13 +237,13 @@ class HSMM:
         for i, j in iter_from_X_lengths(X, lengths):
             logframe = self._emission_logprob(X[i:j])   # build logframe
             u = self._core_u_only(logframe)
-            iter_state_sequence, iter_log_prob = self._core_viterbi(u, logdur, censoring)
+            iter_state_sequence, iter_log_prob = self._core_viterbi(u, logdur, left_censor, right_censor)
             log_prob += iter_log_prob
             state_sequence[i:j] = iter_state_sequence
         return state_sequence, log_prob
 
     # fit: parameter estimation from observation series
-    def fit(self, X, lengths=None, censoring=1):
+    def fit(self, X, lengths=None, left_censor=1, right_censor=1):
         X = check_array(X)
         self._init(X)
         self._check()
@@ -254,9 +257,9 @@ class HSMM:
             for i, j in iter_from_X_lengths(X, lengths):
                 logframe = self._emission_logprob(X[i:j])   # build logframe
                 u = self._core_u_only(logframe)
-                eta, xi = self._core_forward(u, logdur, censoring)
-                beta, betastar = self._core_backward(u, logdur, censoring)
-                gamma = self._core_smoothed(beta, betastar, censoring, eta, xi)
+                eta, xi = self._core_forward(u, logdur, left_censor, right_censor)
+                beta, betastar = self._core_backward(u, logdur, left_censor, right_censor)
+                gamma = self._core_smoothed(beta, betastar, left_censor, right_censor, eta, xi)
                 score += logsumexp(gamma[0, :])   # this is the output of 'score' function
                 # preparation for reestimation / M-step
                 if eta.shape[0] != j - i + 1:

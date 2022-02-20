@@ -75,14 +75,14 @@ def _forward(int n_samples, int n_states, int n_durations,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
              dtype_t[:, :] log_durprob,
-             int right_censor,
+             int left_censor, int right_censor,
              dtype_t[:, :, :] eta, dtype_t[:, :, :] u, dtype_t[:, :, :] xi):
     cdef int t_iter, t, j, d, i
     # set number of iterations for t
-    if right_censor == 0:
-        t_iter = n_samples
-    else:
+    if right_censor != 0:
         t_iter = n_samples + n_durations - 1
+    else:
+        t_iter = n_samples
     cdef dtype_t[::1] alpha_addends = np.empty(n_durations)
     cdef dtype_t[::1] astar_addends = np.empty(n_states)
     cdef dtype_t[::1] alpha = np.empty(n_states)
@@ -116,7 +116,7 @@ def _backward(int n_samples, int n_states, int n_durations,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
              dtype_t[:, :] log_durprob,
-             int right_censor,
+             int left_censor, int right_censor,
              dtype_t[:, :] beta, dtype_t[:, :, :] u, dtype_t[:, :] betastar):
     cdef int t, j, d, i
     cdef dtype_t[::1] bstar_addends = np.empty(n_durations)
@@ -131,10 +131,10 @@ def _backward(int n_samples, int n_states, int n_durations,
                     # betastar summation
                     if t + d + 1 <= n_samples - 1:
                         bstar_addends[d] = log_durprob[j, d] + u[t + d + 1, j, d] + beta[t + d + 1, j]
-                    elif right_censor == 0:   # without right censor
-                        bstar_addends[d] = -INFINITY
-                    else:   # with right censor
+                    elif right_censor != 0:
                         bstar_addends[d] = log_durprob[j, d] + u[n_samples - 1, j, n_samples - t - 2]
+                    else:
+                        bstar_addends[d] = -INFINITY
                 betastar[t + 1, j] = _logsumexp(bstar_addends)
             if t > -1:
                 # beta summation
@@ -146,7 +146,7 @@ def _backward(int n_samples, int n_states, int n_durations,
 # smoothed probabilities
 def _smoothed(int n_samples, int n_states, int n_durations,
               dtype_t[:, :] beta, dtype_t[:, :] betastar,
-              int right_censor,
+              int left_censor, int right_censor,
               dtype_t[:, :, :] eta, dtype_t[:, :, :] xi, dtype_t[:, :] gamma):
     cdef int t, j, d, i, h
 
@@ -154,14 +154,14 @@ def _smoothed(int n_samples, int n_states, int n_durations,
         for t in range(n_samples - 1, -1, -1):
             for i in range(n_states):
                 # eta computation
-                # note: if with right censoring, then eta[t, :, :] for t >= n_samples will be
+                # note: if with right censor, then eta[t, :, :] for t >= n_samples will be
                 # used for gamma computation. since beta[t, :] = 0 for t >= n_samples, hence
                 # no modifications to eta at t >= n_samples.
                 for d in range(n_durations):
                     eta[t, i, d] = eta[t, i, d] + beta[t, i]
                 # xi computation
                 # note: at t == n_samples - 1, it is decided that xi[t, :, :] should be log(0),
-                # either with right censoring or without, because there is no more next data.
+                # either with right censor or without, because there is no more next data.
                 for j in range(n_states):
                     if t == n_samples - 1:
                         xi[t, i, j] = -INFINITY
@@ -182,14 +182,15 @@ def _viterbi(int n_samples, int n_states, int n_durations,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
              dtype_t[:, :] log_duration,
-             int right_censor, dtype_t[:, :, :] u):
+             int left_censor, int right_censor,
+             dtype_t[:, :, :] u):
     cdef int t_iter, t, j, d, i, j_dur, back_state, back_dur, back_t
     cdef dtype_t log_prob
     # set number of iterations for t
-    if right_censor == 0:
-        t_iter = n_samples
-    else:
+    if right_censor != 0:
         t_iter = n_samples + n_durations - 1
+    else:
+        t_iter = n_samples
     cdef dtype_t[:, ::1] delta = np.empty((t_iter, n_states))
     cdef int[:, :, ::1] psi = np.empty((t_iter, n_states, 2), dtype=np.int32)
     cdef dtype_t[::1] buffer0 = np.empty(n_states)
@@ -222,11 +223,7 @@ def _viterbi(int n_samples, int n_states, int n_durations,
                 psi[t, j, 0] = j_dur   # psi[:, j, 0] is the duration of j
                 psi[t, j, 1] = buffer1_state[j_dur]   # psi[:, j, 1] is the state leading to j
         # getting the last state and maximum log probability
-        if right_censor == 0:
-            log_prob = _max(delta[n_samples - 1])
-            back_state = _argmax(delta[n_samples - 1])
-            back_dur = psi[n_samples - 1, back_state, 0]
-        else:
+        if right_censor != 0:
             for d in range(n_durations):
                 buffer1[d] = _max(delta[n_samples + d - 1])
                 buffer1_state[d] = _argmax(delta[n_samples + d - 1])
@@ -234,6 +231,10 @@ def _viterbi(int n_samples, int n_states, int n_durations,
             j_dur = _argmax(buffer1)
             back_state = buffer1_state[j_dur]
             back_dur = psi[n_samples + j_dur - 1, back_state, 0] - j_dur
+        else:
+            log_prob = _max(delta[n_samples - 1])
+            back_state = _argmax(delta[n_samples - 1])
+            back_dur = psi[n_samples - 1, back_state, 0]
         # backward pass
         back_t = n_samples - 1
         for t in range(n_samples - 1, -1, -1):

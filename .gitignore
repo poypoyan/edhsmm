@@ -1,0 +1,11 @@
+__pycache__
+notebooks/.ipynb_checkpoints/
+
+*.bak
+*.c
+
+build/
+dist/
+edhsmm.egg-info/
+
+venv/

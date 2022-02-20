@@ -21,9 +21,26 @@ The code style is inspired from [hmmlearn](https://github.com/hmmlearn/hmmlearn)
 - scipy >= 0.19
 
 #### Installation & Tutorial
+Via *pip*:
 ```console
 pip install edhsmm
 ```
+
+Via *setup.py*:
+```console
+python setup.py install
+```
+
+Test in *venv* (Windows):
+```console
+python -m venv venv
+venv\Scripts\activate
+pip install --upgrade -r requirements.txt
+python setup.py install
+```
+
+**Note**: Also run `pip install notebook matplotlib` to run the notebooks.
+
 For tutorial, see the [notebooks](notebooks).
 
 Found a bug? Suggest a feature? Please post on [issues](https://github.com/poypoyan/edhmm/issues).
