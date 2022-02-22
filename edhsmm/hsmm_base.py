@@ -2,9 +2,9 @@ import numpy as np
 from scipy.stats import multivariate_normal
 from scipy.special import logsumexp
 from sklearn import cluster
-from sklearn.utils import check_array, check_random_state
+from sklearn.utils import check_array
 
-from . import hsmm_core_x as core, hsmm_utils
+from . import _hsmm_core as core, hsmm_utils
 from .hsmm_utils import log_mask_zero, iter_from_X_lengths
 
 # Base Class for Explicit Duration HSMM
@@ -127,15 +127,16 @@ class HSMM:
         # setup random state
         if rnd_state is None:
             rnd_state = self.rnd_state
-        rnd_checked = check_random_state(rnd_state)
+        rnd_checked = np.random.default_rng(rnd_state)
         # adapted from hmmlearn 0.2.3 (see _BaseHMM.score function)
         pi_cdf = np.cumsum(self.pi)
         tmat_cdf = np.cumsum(self.tmat, axis=1)
         dur_cdf = np.cumsum(self._dur_probmat(), axis=1)
         # for first state
-        currstate = (pi_cdf > rnd_checked.rand()).argmax()   # argmax() returns only the first occurrence
-        currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
-        # TODO: left_censor
+        currstate = (pi_cdf > rnd_checked.random()).argmax()   # argmax() returns only the first occurrence
+        currdur = (dur_cdf[currstate] > rnd_checked.random()).argmax() + 1
+        if left_censor != 0:
+            currdur -= rnd_checked.integers(low=0, high=currdur)   # if with left censor, cut some X
         if right_censor == 0 and currdur > n_samples:
             print("SAMPLE: n_samples is too small to contain the first state duration.")
             return None
@@ -144,8 +145,8 @@ class HSMM:
         ctr_sample = currdur
         # for next state transitions
         while ctr_sample < n_samples:
-            currstate = (tmat_cdf[currstate] > rnd_checked.rand()).argmax()
-            currdur = (dur_cdf[currstate] > rnd_checked.rand()).argmax() + 1
+            currstate = (tmat_cdf[currstate] > rnd_checked.random()).argmax()
+            currdur = (dur_cdf[currstate] > rnd_checked.random()).argmax() + 1
             # test if now in the end of generating samples
             if ctr_sample + currdur > n_samples:
                 if right_censor != 0:
@@ -294,19 +295,17 @@ class GaussianHSMM(HSMM):
         # note for programmers: for every attribute that needs X in score()/predict()/fit(),
         # there must be a condition 'if X is None' because sample() doesn't need an X, but
         # default attribute values must be initiated for sample() to proceed.
-        if True:   # always change self.n_dim
+        if not hasattr(self, "mean"):   # also set self.n_dim here
             if X is None:   # default for sample()
                 self.n_dim = 1
+                self.mean = np.arange(0., self.n_states)[:, None]   # = [[0.], [1.], [2.], ...]
             else:
                 self.n_dim = X.shape[1]
-        if not hasattr(self, "mean"):
-            if X is None:   # default for sample()
-                # self.mean = [[0.], [1.], [2.], ...]
-                self.mean = np.arange(0., self.n_states)[:, None]
-            else:
                 kmeans = cluster.KMeans(n_clusters=self.n_states, random_state=self.rnd_state)
                 kmeans.fit(X)
                 self.mean = kmeans.cluster_centers_
+        else:
+            self.n_dim = self.mean.shape[1]   # also default for sample()
         if not hasattr(self, "covmat"):
             if X is None:   # default for sample()
                 self.covmat = np.repeat(np.identity(self.n_dim)[None], self.n_states, axis=0)
@@ -374,5 +373,5 @@ class GaussianHSMM(HSMM):
         self.covmat = ((dist * weight_normalized)[:, :, :, None] * dist[:, :, None]).sum(1)
 
     def _state_sample(self, state, rnd_state=None):
-        rnd_checked = check_random_state(rnd_state)
+        rnd_checked = np.random.default_rng(rnd_state)
         return rnd_checked.multivariate_normal(self.mean[state], self.covmat[state])

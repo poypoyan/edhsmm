@@ -6,8 +6,8 @@ import numpy
 
 setup(
     name="edhsmm",
-    version="0.1.3",
-    description="An(other) implementation of Explicit Duration HMM/HSMM in Python 3",
+    version="0.2.0",
+    description="An(other) implementation of Explicit Duration Hidden Semi-Markov Models in Python 3",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     author="poypoyan",
@@ -25,11 +25,11 @@ setup(
         "Programming Language :: Python :: 3",
     ],
     packages=["edhsmm"],
-    ext_modules=cythonize("edhsmm/hsmm_core_x.pyx",
+    ext_modules=cythonize("edhsmm/_hsmm_core.pyx",
                 include_path = [numpy.get_include()]),
     python_requires=">=3.5",   # compatibility with hmmlearn
     install_requires=[
-        "numpy>=1.10",   # compatibility with hmmlearn
+        "numpy>=1.17",   # np.random.default_rng
         "scikit-learn>=0.16",   # sklearn.utils.check_array
         "scipy>=0.19",   # scipy.special.logsumexp
     ],

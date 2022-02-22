@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.special import logsumexp
-from sklearn.utils import check_random_state
 
 from . import hsmm_base, hsmm_utils
 from .hsmm_base import HSMM
@@ -16,21 +15,22 @@ class MultinomialHSMM(HSMM):
         # note for programmers: for every attribute that needs X in score()/predict()/fit(),
         # there must be a condition 'if X is None' because sample() doesn't need an X, but
         # default attribute values must be initiated for sample() to proceed.
-        if True:   # always change self.n_symbols
+        if not hasattr(self, "emit"):   # also set self.n_symbols here
             if X is None:   # default for sample()
                 self.n_symbols = 2
             else:
                 self.n_symbols = np.max(X) + 1
-        if not hasattr(self, "emit"):
             # like in hmmlearn, whether with X or not, default self.emit would be random
-            rnd_checked = check_random_state(self.rnd_state)
-            init_emit = rnd_checked.rand(self.n_states, self.n_symbols)
+            rnd_checked = np.random.default_rng(self.rnd_state)
+            init_emit = rnd_checked.random((self.n_states, self.n_symbols))
             # normalize probabilities, and make sure we don't divide by zero
             init_sum = init_emit.sum(1)
             zero_sums = (init_sum == 0)   # which rows are all zeros?
             init_emit[zero_sums] = 1   # set all rows with all zeros to all ones
             init_sum[zero_sums] = self.n_symbols
             self.emit = init_emit / init_sum[None].T
+        else:
+            self.n_symbols = self.emit.shape[1]   # also default for sample()
 
     def _check(self):
         super()._check()
@@ -74,5 +74,5 @@ class MultinomialHSMM(HSMM):
 
     def _state_sample(self, state, rnd_state=None):
         emit_cdf = np.cumsum(self.emit[state, :])
-        rnd_checked = check_random_state(rnd_state)
-        return [(emit_cdf > rnd_checked.rand()).argmax()]   # shape of X must be (n_samples, 1)
+        rnd_checked = np.random.default_rng(rnd_state)
+        return [(emit_cdf > rnd_checked.random()).argmax()]   # shape of X must be (n_samples, 1)
