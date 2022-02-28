@@ -6,7 +6,7 @@ The EM algorithm is based on [Yu (2010)](https://www.sciencedirect.com/science/a
 The code style is inspired from [hmmlearn](https://github.com/hmmlearn/hmmlearn) and [jvkersch/hsmmlearn](https://github.com/jvkersch/hsmmlearn).
 
 #### Implemented so far
-- EM algorithm (with & without right-censoring)
+- EM algorithm
 - Scoring (log-likelihood of observation under the model)
 - Viterbi algorithm
 - Generate samples

@@ -116,7 +116,7 @@ def _backward(int n_samples, int n_states, int n_durations,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
              dtype_t[:, :] log_durprob,
-             int left_censor, int right_censor,
+             int right_censor,
              dtype_t[:, :] beta, dtype_t[:, :, :] u, dtype_t[:, :] betastar):
     cdef int t, j, d, i
     cdef dtype_t[::1] bstar_addends = np.empty(n_durations)
@@ -146,7 +146,7 @@ def _backward(int n_samples, int n_states, int n_durations,
 # smoothed probabilities
 def _smoothed(int n_samples, int n_states, int n_durations,
               dtype_t[:, :] beta, dtype_t[:, :] betastar,
-              int left_censor, int right_censor,
+              int right_censor,
               dtype_t[:, :, :] eta, dtype_t[:, :, :] xi, dtype_t[:, :] gamma):
     cdef int t, j, d, i, h
 
@@ -175,7 +175,7 @@ def _smoothed(int n_samples, int n_states, int n_durations,
                 for d in range(n_durations):
                     for h in range(n_durations):
                         if h >= d and (t + d < n_samples or right_censor != 0):
-                            gamma[t, i] = _logaddexp(gamma[t, i], eta[t + d, i, h])   # logaddexp
+                            gamma[t, i] = _logaddexp(gamma[t, i], eta[t + d, i, h])
 
 # viterbi algorithm
 def _viterbi(int n_samples, int n_states, int n_durations,
