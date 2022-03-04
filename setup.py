@@ -26,7 +26,7 @@ setup(
         "Programming Language :: Python :: 3",
     ],
     packages=["edhsmm"],
-    ext_modules=cythonize("edhsmm/_hsmm_core.pyx",
+    ext_modules=cythonize(["edhsmm/_hsmm_core.pyx"],
                 include_path = [numpy.get_include()]),
     python_requires=">=3.5",   # compatibility with hmmlearn
     install_requires=[
