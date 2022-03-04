@@ -5,10 +5,11 @@ from . import hsmm_base, hsmm_utils
 from .hsmm_base import HSMM
 from .hsmm_utils import log_mask_zero
 
+
 # Explicit Duration HSMM with Multinomial (Discrete) Emissions
 class MultinomialHSMM(HSMM):
-    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, rnd_state=None):
-        super().__init__(n_states, n_durations, n_iter, tol, rnd_state)
+    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, random_state=None):
+        super().__init__(n_states, n_durations, n_iter, tol, random_state)
 
     def _init(self, X):
         super()._init()
@@ -21,7 +22,7 @@ class MultinomialHSMM(HSMM):
             else:
                 self.n_symbols = np.max(X) + 1
             # like in hmmlearn, whether with X or not, default self.emit would be random
-            rnd_checked = np.random.default_rng(self.rnd_state)
+            rnd_checked = np.random.default_rng(self.random_state)
             init_emit = rnd_checked.random((self.n_states, self.n_symbols))
             # normalize probabilities, and make sure we don't divide by zero
             init_sum = init_emit.sum(1)
@@ -72,7 +73,7 @@ class MultinomialHSMM(HSMM):
         iverson = (X.T == np.arange(self.n_symbols)[:,None])   # iverson bracket
         self.emit = (weight_normalized[:,:,None] * iverson[:,None].T).sum(0)
 
-    def _state_sample(self, state, rnd_state=None):
+    def _state_sample(self, state, random_state=None):
         emit_cdf = np.cumsum(self.emit[state, :])
-        rnd_checked = np.random.default_rng(rnd_state)
+        rnd_checked = np.random.default_rng(random_state)
         return [(emit_cdf > rnd_checked.random()).argmax()]   # shape of X must be (n_samples, 1)

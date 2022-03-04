@@ -2,6 +2,7 @@
 
 import numpy as np
 
+
 cdef extern from "math.h":
     long double expl(long double) nogil
     long double logl(long double) nogil
@@ -11,6 +12,7 @@ cdef extern from "math.h":
     const float INFINITY
 
 ctypedef double dtype_t
+
 
 # auxiliary math functions: copied from hmmlearn 0.2.3
 
@@ -24,8 +26,10 @@ cdef inline int _argmax(dtype_t[:] X) nogil:
             pos = i
     return pos
 
+
 cdef inline dtype_t _max(dtype_t[:] X) nogil:
     return X[_argmax(X)]
+
 
 cdef inline dtype_t _logsumexp(dtype_t[:] X) nogil:
     cdef dtype_t X_max = _max(X)
@@ -37,6 +41,7 @@ cdef inline dtype_t _logsumexp(dtype_t[:] X) nogil:
         acc += expl(X[i] - X_max)
     return logl(acc) + X_max
 
+
 cdef inline dtype_t _logaddexp(dtype_t a, dtype_t b) nogil:
     if isinf(a) and a < 0:
         return b
@@ -44,6 +49,7 @@ cdef inline dtype_t _logaddexp(dtype_t a, dtype_t b) nogil:
         return a
     else:
         return max(a, b) + log1pl(expl(-fabsl(a - b)))
+
 
 # main functions
 
@@ -61,14 +67,18 @@ def _u_only(int n_samples, int n_states, int n_durations,
                     else:
                         u[t, j, d] = u[t - 1, j, d - 1] + log_obsprob[t, j]
 
-# evaluate current u_t(j, d). extends to t > n_samples - 1.
+
+# evaluate current u_t(j, d). extends to t - d < 0 and t > n_samples - 1.
 cdef inline dtype_t _curr_u(int n_samples, dtype_t[:, :, :] u, int t, int j, int d) nogil:
-    if t < n_samples:
+    if t - d >= 0 and t < n_samples:
         return u[t, j, d]
-    elif d < t - (n_samples - 1):
-        return 0.0
-    else:
+    elif t - d < 0:
+        return u[t, j, t]
+    elif d >= t - (n_samples - 1):
         return u[n_samples - 1, j, (n_samples - 1) + d - t]
+    else:
+        return 0.0
+
 
 # forward algorithm
 def _forward(int n_samples, int n_states, int n_durations,
@@ -96,8 +106,9 @@ def _forward(int n_samples, int n_states, int n_durations,
                 for d in range(n_durations):
                     # alpha summation
                     if t - d >= 0:
-                        alpha_addends[d] = alphastar[t - d, j] + log_durprob[j, d] + \
-                                           _curr_u(n_samples, u, t, j, d)
+                        alpha_addends[d] = alphastar[t - d, j] + log_durprob[j, d] + _curr_u(n_samples, u, t, j, d)
+                    elif left_censor != 0:
+                        alpha_addends[d] = log_startprob[j] + log_durprob[j, d] + _curr_u(n_samples, u, t, j, d)
                     else:
                         alpha_addends[d] = -INFINITY
                     eta[t, j, d] = alpha_addends[d]   # eta initial
@@ -110,6 +121,7 @@ def _forward(int n_samples, int n_states, int n_durations,
                         xi[t, i, j] = astar_addends[i]   # xi initial
                 if t < t_iter - 1:
                     alphastar[t + 1, j] = _logsumexp(astar_addends)
+
 
 # backward algorithm
 def _backward(int n_samples, int n_states, int n_durations,
@@ -129,10 +141,10 @@ def _backward(int n_samples, int n_states, int n_durations,
             for j in range(n_states):
                 for d in range(n_durations):
                     # betastar summation
-                    if t + d + 1 <= n_samples - 1:
-                        bstar_addends[d] = log_durprob[j, d] + u[t + d + 1, j, d] + beta[t + d + 1, j]
+                    if t + d + 1 < n_samples:
+                        bstar_addends[d] = log_durprob[j, d] + _curr_u(n_samples, u, t + d + 1, j, d) + beta[t + d + 1, j]
                     elif right_censor != 0:
-                        bstar_addends[d] = log_durprob[j, d] + u[n_samples - 1, j, n_samples - t - 2]
+                        bstar_addends[d] = log_durprob[j, d] + _curr_u(n_samples, u, t + d + 1, j, d)
                     else:
                         bstar_addends[d] = -INFINITY
                 betastar[t + 1, j] = _logsumexp(bstar_addends)
@@ -142,6 +154,7 @@ def _backward(int n_samples, int n_states, int n_durations,
                     for i in range(n_states):
                         beta_addends[i] = log_transmat[j, i] + betastar[t + 1, i]
                     beta[t, j] = _logsumexp(beta_addends)
+
 
 # smoothed probabilities
 def _smoothed(int n_samples, int n_states, int n_durations,
@@ -154,8 +167,8 @@ def _smoothed(int n_samples, int n_states, int n_durations,
         for t in range(n_samples - 1, -1, -1):
             for i in range(n_states):
                 # eta computation
-                # note: if with right censor, then eta[t, :, :] for t >= n_samples will be
-                # used for gamma computation. since beta[t, :] = 0 for t >= n_samples, hence
+                # note: if with right censor, then eta[t, :, :] for t >= n_samples will only
+                # be used for gamma computation. since beta[t, :] = 0 for t >= n_samples, hence
                 # no modifications to eta at t >= n_samples.
                 for d in range(n_durations):
                     eta[t, i, d] = eta[t, i, d] + beta[t, i]
@@ -176,6 +189,7 @@ def _smoothed(int n_samples, int n_states, int n_durations,
                     for h in range(n_durations):
                         if h >= d and (t + d < n_samples or right_censor != 0):
                             gamma[t, i] = _logaddexp(gamma[t, i], eta[t + d, i, h])
+
 
 # viterbi algorithm
 def _viterbi(int n_samples, int n_states, int n_durations,
@@ -203,22 +217,20 @@ def _viterbi(int n_samples, int n_states, int n_durations,
         for t in range(t_iter):
             for j in range(n_states):
                 for d in range(n_durations):
-                    if t - d == 0:   # beginning
-                        buffer1[d] = log_startprob[j] + log_duration[j, d] + \
-                                      _curr_u(n_samples, u, t, j, d)
+                    if t - d == 0 or (t - d < 0 and left_censor != 0):   # beginning
+                        buffer1[d] = log_startprob[j] + log_duration[j, d] + _curr_u(n_samples, u, t, j, d)
                         buffer1_state[d] = -1   # place-holder only
                     elif t - d > 0:   # ongoing
                         for i in range(n_states):
                             if i != j:
-                                buffer0[i] = delta[t - d - 1, i] + log_transmat[i, j] + \
-                                             _curr_u(n_samples, u, t, j, d)         
+                                buffer0[i] = delta[t - d - 1, i] + log_transmat[i, j] + _curr_u(n_samples, u, t, j, d)
                             else:
                                 buffer0[i] = -INFINITY
                         buffer1[d] = _max(buffer0) + log_duration[j, d]
                         buffer1_state[d] = _argmax(buffer0)
                     else:   # this should not be chosen
                         buffer1[d] = -INFINITY
-                delta[t, j] = _max(buffer1)        
+                delta[t, j] = _max(buffer1)
                 j_dur = _argmax(buffer1)
                 psi[t, j, 0] = j_dur   # psi[:, j, 0] is the duration of j
                 psi[t, j, 1] = buffer1_state[j_dur]   # psi[:, j, 1] is the state leading to j

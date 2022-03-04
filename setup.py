@@ -1,8 +1,9 @@
-# Copyright (C) 2021 poypoyan
+# Copyright (C) 2022 poypoyan
 
 from setuptools import setup
 from Cython.Build import cythonize
 import numpy
+
 
 setup(
     name="edhsmm",

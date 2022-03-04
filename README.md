@@ -41,6 +41,6 @@ python setup.py install
 
 **Note**: Also run `pip install notebook matplotlib` to run the notebooks.
 
-For tutorial, see the [notebooks](notebooks).
+For tutorial, see the [notebooks](notebooks). This also serves as some sort of "documentation".
 
 Found a bug? Suggest a feature? Please post on [issues](https://github.com/poypoyan/edhmm/issues).

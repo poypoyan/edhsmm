@@ -1,5 +1,6 @@
 import numpy as np
 
+
 # iterator for X with multiple observation sequences
 # copied from hmmlearn
 def iter_from_X_lengths(X, lengths):
@@ -15,6 +16,7 @@ def iter_from_X_lengths(X, lengths):
 
         for i in range(len(lengths)):
             yield start[i], end[i]
+
 
 # masks error when applying log(0)
 # copied from hmmlearn
