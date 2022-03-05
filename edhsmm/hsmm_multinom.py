@@ -14,7 +14,7 @@ class MultinomialHSMM(HSMM):
     def _init(self, X):
         super()._init()
         # note for programmers: for every attribute that needs X in score()/predict()/fit(),
-        # there must be a condition 'if X is None' because sample() doesn't need an X, but
+        # there must be a condition "if X is None" because sample() doesn't need an X, but
         # default attribute values must be initiated for sample() to proceed.
         if not hasattr(self, "emit"):   # also set self.n_symbols here
             if X is None:   # default for sample()
@@ -64,7 +64,7 @@ class MultinomialHSMM(HSMM):
         # non-parametric duration
         self.dur = new_dur
 
-    def _emission_logprob(self, X):
+    def _emission_logl(self, X):
         return log_mask_zero(self.emit[:, np.concatenate(X)].T)
 
     def _emission_mstep(self, X, emission_var):

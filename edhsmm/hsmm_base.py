@@ -86,8 +86,8 @@ class HSMM:
         """
         pass   # implemented in subclass
 
-    # _emission_logprob: compute the log-likelihood per state of each observation
-    def _emission_logprob(self):
+    # _emission_logl: compute the log-likelihood per state of each observation
+    def _emission_logl(self):
         """
         arguments: (self, X)
         return: logframe
@@ -112,7 +112,7 @@ class HSMM:
         """
         pass   # implemented in subclass
 
-    # _state_sample: generate 'observation' for given state
+    # _state_sample: generate observation for given state
     def _state_sample(self):
         """
         arguments: (self, state, random_state=None)
@@ -142,7 +142,7 @@ class HSMM:
             print("SAMPLE: n_samples is too small to contain the first state duration.")
             return None
         state_sequence = [currstate] * currdur
-        X = [self._state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
+        X = [self._state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate observation
         ctr_sample = currdur
         # for next state transitions
         while ctr_sample < n_samples:
@@ -155,7 +155,7 @@ class HSMM:
                 else:
                     break   # else, do not include exceeding state duration
             state_sequence += [currstate] * currdur
-            X += [self._state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate 'observation'
+            X += [self._state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate observation
             ctr_sample += currdur
         return ctr_sample, np.atleast_2d(X), np.array(state_sequence, dtype=int)
 
@@ -204,11 +204,11 @@ class HSMM:
     # _core_viterbi: container for core._viterbi (for multiple observation sequences)
     def _core_viterbi(self, u, logdur, left_censor, right_censor):
         n_samples = u.shape[0]
-        state_sequence, log_prob = core._viterbi(n_samples, self.n_states, self.n_durations,
-                                                 log_mask_zero(self.pi),
-                                                 log_mask_zero(self.tmat),
-                                                 logdur, left_censor, right_censor, u)
-        return state_sequence, log_prob
+        state_sequence, state_logl = core._viterbi(n_samples, self.n_states, self.n_durations,
+                                                   log_mask_zero(self.pi),
+                                                   log_mask_zero(self.tmat),
+                                                   logdur, left_censor, right_censor, u)
+        return state_sequence, state_logl
 
     # score: log-likelihood computation from observation series
     def score(self, X, lengths=None, left_censor=0, right_censor=1):
@@ -217,20 +217,20 @@ class HSMM:
         self._check()
         logdur = log_mask_zero(self._dur_probmat())   # build logdur
         # main computations
-        log_prob = 0
+        score = 0
         for i, j in iter_from_X_lengths(X, lengths):
-            logframe = self._emission_logprob(X[i:j])   # build logframe
+            logframe = self._emission_logl(X[i:j])   # build logframe
             u = self._core_u_only(logframe)
             if left_censor != 0:
                 eta, xi = self._core_forward(u, logdur, left_censor, right_censor)
                 beta, betastar = self._core_backward(u, logdur, right_censor)
                 gamma = self._core_smoothed(beta, betastar, right_censor, eta, xi)
-                log_prob += logsumexp(gamma[0, :])
+                score += logsumexp(gamma[0, :])
             else:   # if without left censor, computation can be simplified
                 _, betastar = self._core_backward(u, logdur, right_censor)
                 gammazero = log_mask_zero(self.pi) + betastar[0]
-                log_prob += logsumexp(gammazero)
-        return log_prob
+                score += logsumexp(gammazero)
+        return score
 
     # predict: hidden state & duration estimation from observation series
     def predict(self, X, lengths=None, left_censor=0, right_censor=1):
@@ -239,15 +239,15 @@ class HSMM:
         self._check()
         logdur = log_mask_zero(self._dur_probmat())   # build logdur
         # main computations
-        log_prob = 0
+        state_logl = 0   # math note: this is different from score() output
         state_sequence = np.empty(X.shape[0], dtype=int)   # total n_samples = X.shape[0]
         for i, j in iter_from_X_lengths(X, lengths):
-            logframe = self._emission_logprob(X[i:j])   # build logframe
+            logframe = self._emission_logl(X[i:j])   # build logframe
             u = self._core_u_only(logframe)
-            iter_state_sequence, iter_log_prob = self._core_viterbi(u, logdur, left_censor, right_censor)
-            log_prob += iter_log_prob
+            iter_state_sequence, iter_state_logl = self._core_viterbi(u, logdur, left_censor, right_censor)
+            state_logl += iter_state_logl
             state_sequence[i:j] = iter_state_sequence
-        return state_sequence, log_prob
+        return state_sequence, state_logl
 
     # fit: parameter estimation from observation series
     def fit(self, X, lengths=None, left_censor=0, right_censor=1):
@@ -262,12 +262,12 @@ class HSMM:
             emission_var = np.empty((X.shape[0], self.n_states))   # cumulative concatenation of gammas
             logdur = log_mask_zero(self._dur_probmat())   # build logdur
             for i, j in iter_from_X_lengths(X, lengths):
-                logframe = self._emission_logprob(X[i:j])   # build logframe
+                logframe = self._emission_logl(X[i:j])   # build logframe
                 u = self._core_u_only(logframe)
                 eta, xi = self._core_forward(u, logdur, left_censor, right_censor)
                 beta, betastar = self._core_backward(u, logdur, right_censor)
                 gamma = self._core_smoothed(beta, betastar, right_censor, eta, xi)
-                score += logsumexp(gamma[0, :])   # this is the output of 'score' function
+                score += logsumexp(gamma[0, :])   # this is the output of score()
                 # preparation for reestimation / M-step
                 if eta.shape[0] != j - i + 1:
                     eta = eta[:j - i + 1]
@@ -300,7 +300,7 @@ class GaussianHSMM(HSMM):
     def _init(self, X):
         super()._init()
         # note for programmers: for every attribute that needs X in score()/predict()/fit(),
-        # there must be a condition 'if X is None' because sample() doesn't need an X, but
+        # there must be a condition "if X is None" because sample() doesn't need an X, but
         # default attribute values must be initiated for sample() to proceed.
         if not hasattr(self, "mean"):   # also set self.n_dim here
             if X is None:   # default for sample()
@@ -354,7 +354,7 @@ class GaussianHSMM(HSMM):
         # non-parametric duration
         self.dur = new_dur
 
-    def _emission_logprob(self, X):
+    def _emission_logl(self, X):
         # abort EM loop if any covariance matrix is not symmetric, positive-definite.
         # adapted from hmmlearn 0.2.3 (see _utils._validate_covars function)
         for n, cv in enumerate(self.covmat):
@@ -365,6 +365,8 @@ class GaussianHSMM(HSMM):
         n_samples = X.shape[0]
         logframe = np.empty((n_samples, self.n_states))
         for i in range(self.n_states):
+            # math note: since Gaussian distribution is continuous, probability density
+            # is what's computed here. thus log-likelihood can be positive!
             multigauss = multivariate_normal(self.mean[i], self.covmat[i])
             for j in range(n_samples):
                 logframe[j, i] = log_mask_zero(multigauss.pdf(X[j]))

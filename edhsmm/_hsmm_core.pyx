@@ -199,7 +199,7 @@ def _viterbi(int n_samples, int n_states, int n_durations,
              int left_censor, int right_censor,
              dtype_t[:, :, :] u):
     cdef int t_iter, t, j, d, i, j_dur, back_state, back_dur, back_t
-    cdef dtype_t log_prob
+    cdef dtype_t state_logl
     # set number of iterations for t
     if right_censor != 0:
         t_iter = n_samples + n_durations - 1
@@ -234,17 +234,17 @@ def _viterbi(int n_samples, int n_states, int n_durations,
                 j_dur = _argmax(buffer1)
                 psi[t, j, 0] = j_dur   # psi[:, j, 0] is the duration of j
                 psi[t, j, 1] = buffer1_state[j_dur]   # psi[:, j, 1] is the state leading to j
-        # getting the last state and maximum log probability
+        # getting the last state and maximum log-likelihood
         if right_censor != 0:
             for d in range(n_durations):
                 buffer1[d] = _max(delta[n_samples + d - 1])
                 buffer1_state[d] = _argmax(delta[n_samples + d - 1])
-            log_prob = _max(buffer1)
+            state_logl = _max(buffer1)
             j_dur = _argmax(buffer1)
             back_state = buffer1_state[j_dur]
             back_dur = psi[n_samples + j_dur - 1, back_state, 0] - j_dur
         else:
-            log_prob = _max(delta[n_samples - 1])
+            state_logl = _max(delta[n_samples - 1])
             back_state = _argmax(delta[n_samples - 1])
             back_dur = psi[n_samples - 1, back_state, 0]
         # backward pass
@@ -257,4 +257,4 @@ def _viterbi(int n_samples, int n_states, int n_durations,
             state_sequence[t] = back_state
             back_dur -= 1
 
-    return state_sequence, log_prob
+    return state_sequence, state_logl
