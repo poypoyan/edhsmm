@@ -1,7 +1,9 @@
+**Warning:** I made this repo when I was an undergrad, but was not even part of my undergrad project. Correctness of implementation not guaranteed, so use at your own risk.
+
 # edhsmm
 An(other) implementation of Explicit Duration Hidden Semi-Markov Models in Python 3
 
-The EM algorithm is based on [Yu (2010)](https://www.sciencedirect.com/science/article/pii/S0004370209001416) (Section 3.1), while the Viterbi algorithm is based on [Benouareth et al. (2008)](https://link.springer.com/article/10.1155/2008/247354).
+The EM algorithm is based on [Yu (2010)](https://www.sciencedirect.com/science/article/pii/S0004370209001416) (Section 3.1, 2.2.1 & 2.2.2), while the Viterbi algorithm is based on [Benouareth et al. (2008)](https://link.springer.com/article/10.1155/2008/247354).
 
 The code style is inspired from [hmmlearn](https://github.com/hmmlearn/hmmlearn) and [jvkersch/hsmmlearn](https://github.com/jvkersch/hsmmlearn).
 
