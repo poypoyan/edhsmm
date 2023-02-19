@@ -8,8 +8,8 @@ from .hsmm_utils import log_mask_zero
 
 # Explicit Duration HSMM with Multinomial (Discrete) Emissions
 class MultinomialHSMM(HSMM):
-    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, random_state=None):
-        super().__init__(n_states, n_durations, n_iter, tol, random_state)
+    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, random_state=None, name=""):
+        super().__init__(n_states, n_durations, n_iter, tol, random_state, name)
 
     def _init(self, X):
         super()._init()

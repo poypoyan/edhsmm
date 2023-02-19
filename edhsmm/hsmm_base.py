@@ -10,7 +10,7 @@ from .hsmm_utils import log_mask_zero, iter_from_X_lengths
 
 # Base Class for Explicit Duration HSMM
 class HSMM:
-    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, random_state=None):
+    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, random_state=None, name=""):
         if not n_states >= 2:
             raise ValueError("number of states (n_states) must be at least 2")
         if not n_durations >= 1:
@@ -20,9 +20,13 @@ class HSMM:
         self.n_iter = n_iter
         self.tol = tol
         self.random_state = random_state
+        self.name = name
+        self._print_name = ""
 
     # _init: initializes model parameters if there are none yet
     def _init(self):
+        if self.name != "" and self._print_name == "":
+            self._print_name = f" ({ self.name })"
         if not hasattr(self, "pi"):
             self.pi = np.full(self.n_states, 1.0 / self.n_states)
         if not hasattr(self, "tmat"):
@@ -139,7 +143,7 @@ class HSMM:
         if left_censor != 0:
             currdur -= rnd_checked.integers(low=0, high=currdur)   # if with left censor, remove some of X
         if right_censor == 0 and currdur > n_samples:
-            print("SAMPLE: n_samples is too small to contain the first state duration.")
+            print(f"SAMPLE{ self._print_name }: n_samples is too small to contain the first state duration.")
             return None
         state_sequence = [currstate] * currdur
         X = [self._state_sample(currstate, rnd_checked) for i in range(currdur)]   # generate observation
@@ -279,7 +283,7 @@ class HSMM:
                 emission_var[i:j] = gamma
             # check for loop break
             if itera > 0 and (score - old_score) < self.tol:
-                print("FIT: converged at loop {}.".format(itera + 1))
+                print(f"FIT{ self._print_name }: converged at loop { itera + 1 }.")
                 break
             else:
                 old_score = score
@@ -289,13 +293,18 @@ class HSMM:
             new_dur = np.exp(dur_num - logsumexp(dur_num, axis=1)[None].T)
             self._dur_mstep(new_dur)   # new durations
             self._emission_mstep(X, emission_var)   # new emissions
-            print("FIT: reestimation complete for loop {}.".format(itera + 1))
+            print(f"FIT{ self._print_name }: reestimation complete for loop { itera + 1 }.")
+        # return fitted edhsmm for joblib
+        return self
 
 
 # Sample Subclass: Explicit Duration HSMM with Gaussian Emissions
 class GaussianHSMM(HSMM):
-    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, random_state=None):
-        super().__init__(n_states, n_durations, n_iter, tol, random_state)
+    def __init__(self, n_states=2, n_durations=5, n_iter=20, tol=1e-2, random_state=None, name="",
+                 kmeans_init='k-means++', kmeans_n_init='auto'):
+        super().__init__(n_states, n_durations, n_iter, tol, random_state, name)
+        self.kmeans_init = kmeans_init
+        self.kmeans_n_init = kmeans_n_init
 
     def _init(self, X):
         super()._init()
@@ -308,7 +317,8 @@ class GaussianHSMM(HSMM):
                 self.mean = np.arange(0., self.n_states)[:, None]   # = [[0.], [1.], [2.], ...]
             else:
                 self.n_dim = X.shape[1]
-                kmeans = cluster.KMeans(n_clusters=self.n_states, random_state=self.random_state)
+                kmeans = cluster.KMeans(n_clusters=self.n_states, random_state=self.random_state,
+                                        init=self.kmeans_init, n_init=self.kmeans_n_init)
                 kmeans.fit(X)
                 self.mean = kmeans.cluster_centers_
         else:

@@ -12,7 +12,7 @@ extensions = [Extension("edhsmm._hsmm_core", ["edhsmm/_hsmm_core.pyx"],
 
 setup(
     name="edhsmm",
-    version="0.2.1",
+    version="0.2.2",
     description="An(other) implementation of Explicit Duration Hidden Semi-Markov Models in Python 3",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
