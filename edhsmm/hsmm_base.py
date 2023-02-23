@@ -294,7 +294,7 @@ class HSMM:
             self._dur_mstep(new_dur)   # new durations
             self._emission_mstep(X, emission_var)   # new emissions
             print(f"FIT{ self._print_name }: reestimation complete for loop { itera + 1 }.")
-        # return fitted edhsmm for joblib
+        # return fitted model for joblib
         return self
 
 
