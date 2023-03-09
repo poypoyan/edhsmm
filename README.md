@@ -17,7 +17,7 @@ The code style is inspired from [hmmlearn](https://github.com/hmmlearn/hmmlearn)
 - Support for multinomial (discrete) emissions
 
 #### Dependencies
-- python >= 3.5
+- python >= 3.6
 - numpy >= 1.17
 - scikit-learn >= 0.16
 - scipy >= 0.19

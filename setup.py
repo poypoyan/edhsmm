@@ -32,7 +32,7 @@ setup(
     ],
     packages=["edhsmm"],
     ext_modules=cythonize(extensions),
-    python_requires=">=3.5",   # compatibility with hmmlearn
+    python_requires=">=3.6",   # f-strings
     install_requires=[
         "numpy>=1.17",   # np.random.default_rng
         "scikit-learn>=0.16",   # sklearn.utils.check_array
