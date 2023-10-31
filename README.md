@@ -33,13 +33,29 @@ Via *setup.py*:
 python setup.py install
 ```
 
-Test in *venv* (Windows):
+Test in *venv*:
+
+Windows
 ```console
-python -m venv venv
-venv\Scripts\activate
+git clone https://github.com/poypoyan/edhsmm.git
+cd edhsmm
+python -m venv edhsmm-venv
+edhsmm-venv\Scripts\activate
 pip install --upgrade -r requirements.txt
-python setup.py install
+pip install .
 ```
+Type `python` to run Python CLI, and type `deactivate` to exit the environment.
+
+Linux
+```console
+git clone https://github.com/poypoyan/edhsmm.git
+cd edhsmm
+python3 -m venv edhsmm-venv
+source edhsmm-venv/bin/activate
+pip install --upgrade -r requirements.txt
+pip install .
+```
+Type `python3` to run Python CLI, and type `deactivate` to exit the environment.
 
 **Note**: Also run `pip install notebook matplotlib` to run the notebooks.
 
