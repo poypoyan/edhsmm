@@ -23,14 +23,14 @@ The code style is inspired from [hmmlearn](https://github.com/hmmlearn/hmmlearn)
 - scipy >= 0.19
 
 #### Installation & Tutorial
-Via *pip*:
+Via *PyPI*:
 ```console
 pip install edhsmm
 ```
 
-Via *setup.py*:
+Via *source*:
 ```console
-python setup.py install
+pip install .
 ```
 
 Test in *venv*:

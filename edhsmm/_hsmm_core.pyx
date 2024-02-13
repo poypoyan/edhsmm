@@ -54,6 +54,7 @@ cdef inline dtype_t _logaddexp(dtype_t a, dtype_t b) nogil:
 # main functions
 
 # compute for u_t(j, d)
+# cite: Yu, 3.1.1, eq. (21)
 def _u_only(int n_samples, int n_states, int n_durations,
             dtype_t[:, :] log_obsprob, dtype_t[:, :, :] u):
     cdef int t, j, d
@@ -69,6 +70,7 @@ def _u_only(int n_samples, int n_states, int n_durations,
 
 
 # evaluate current u_t(j, d). extends to t - d < 0 and t > n_samples - 1.
+# note: for t > n_samples - 1, "log_obsprob[t, j]" is not stored and its value is 0.
 cdef inline dtype_t _curr_u(int n_samples, dtype_t[:, :, :] u, int t, int j, int d) nogil:
     if t - d >= 0 and t < n_samples:
         return u[t, j, d]
@@ -81,6 +83,8 @@ cdef inline dtype_t _curr_u(int n_samples, dtype_t[:, :, :] u, int t, int j, int
 
 
 # forward algorithm
+# cite: Yu, 3.1, eq. (15) for alpha, and (16) for alphastar
+# note: eta and xi are initially computed here (their alpha and alphastar parts, respectively)
 def _forward(int n_samples, int n_states, int n_durations,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
@@ -124,6 +128,7 @@ def _forward(int n_samples, int n_states, int n_durations,
 
 
 # backward algorithm
+# cite: Yu, 3.1, eq. (17) for betastar, and (18) for beta
 def _backward(int n_samples, int n_states, int n_durations,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
@@ -167,12 +172,14 @@ def _smoothed(int n_samples, int n_states, int n_durations,
         for t in range(n_samples - 1, -1, -1):
             for i in range(n_states):
                 # eta computation
+                # cite: Yu, 2.2.2, eq. (6)
                 # note: if with right censor, then eta[t, :, :] for t >= n_samples will only
                 # be used for gamma computation. since beta[t, :] = 0 for t >= n_samples, hence
                 # no modifications to eta at t >= n_samples.
                 for d in range(n_durations):
                     eta[t, i, d] = eta[t, i, d] + beta[t, i]
                 # xi computation
+                # cite: Yu, 2.2.2, eq. (7), simplified
                 # note: at t == n_samples - 1, it is decided that xi[t, :, :] should be log(0),
                 # either with right censor or without, because there is no more next data.
                 for j in range(n_states):
@@ -181,9 +188,10 @@ def _smoothed(int n_samples, int n_states, int n_durations,
                     else:
                         xi[t, i, j] = xi[t, i, j] + betastar[t + 1, j]
                 # gamma computation
-                # note: this is the slow "original" method. the paper provides a faster
-                # recursive method (using xi), but it requires subtraction and produced
-                # numerical inaccuracies from our initial tests. 
+                # cite: Yu, 2.2.2, eq. (8)
+                # note: this is the slow "original" method. the paper provides a faster recursive
+                # method using xi (cite: Yu, 2.2.2, eq. (9)), but it requires subtraction and
+                # produced numerical inaccuracies from our initial tests.
                 gamma[t, i] = -INFINITY
                 for d in range(n_durations):
                     for h in range(n_durations):
@@ -192,6 +200,7 @@ def _smoothed(int n_samples, int n_states, int n_durations,
 
 
 # viterbi algorithm
+# cite: Benouareth, 3.3
 def _viterbi(int n_samples, int n_states, int n_durations,
              dtype_t[:] log_startprob,
              dtype_t[:, :] log_transmat,
